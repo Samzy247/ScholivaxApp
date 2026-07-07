@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "422625183071",
+    "project_id": "scholivax",
+    "storage_bucket": "scholivax.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:422625183071:android:85872e7e0f8ae2d93a62ea",
+        "android_client_info": {
+          "package_name": "com.scholivax"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJT9_e0WpSAnOGVDZxnIOQLDHfaUuJpzs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
