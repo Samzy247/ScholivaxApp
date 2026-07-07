@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:422625183071:android:85872e7e0f8ae2d93a62ea",
+        "mobilesdk_app_id": "1:422625183071:android:c950f861284e7ad63a62ea",
         "android_client_info": {
-          "package_name": "com.scholivax"
+          "package_name": "com.scholivax.app"
         }
       },
       "oauth_client": [],

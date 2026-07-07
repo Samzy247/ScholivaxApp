@@ -56,18 +56,29 @@ class LoginActivity : AppCompatActivity() {
 
                 if (response.isSuccessful && body?.status == "success" && body.token != null) {
                     sessionManager.saveSession(body.token, body.user_type ?: "", body.user_id ?: 0, body.name)
-
-                    // Register this device for push notifications right away.
-                    val fcmToken = FirebaseMessaging.getInstance().token.await()
-                    try { api.registerDevice(fcmToken) } catch (_: Exception) { /* retried on next launch */ }
-
                     SyncWorker.schedulePeriodic(this@LoginActivity)
+
+                    // Navigate immediately — never let push-notification setup block getting in.
                     routeToDashboard(body.user_type)
+
+                    // Best-effort, fire-and-forget: register this device for push.
+                    // Any failure here (Play Services missing, Firebase misconfigured,
+                    // no network) must NOT stop the user from reaching their dashboard.
+                    try {
+                        val fcmToken = FirebaseMessaging.getInstance().token.await()
+                        api.registerDevice(fcmToken)
+                    } catch (e: Exception) {
+                        android.util.Log.w("Login", "FCM registration skipped: ${e.message}")
+                    }
                 } else {
-                    binding.errorText.text = body?.message ?: "Login failed."
+                    binding.errorText.text = body?.message ?: "Login failed (server said: ${response.code()})."
                 }
             } catch (e: Exception) {
-                binding.errorText.text = "Couldn't reach the server. Check your connection."
+                // Show the REAL reason instead of a generic message, so it's
+                // possible to diagnose from a screenshot alone.
+                val detail = e.message ?: e.javaClass.simpleName
+                binding.errorText.text = "Couldn't reach the server: $detail"
+                android.widget.Toast.makeText(this@LoginActivity, "Login error: $detail", android.widget.Toast.LENGTH_LONG).show()
             } finally {
                 setLoading(false)
             }
@@ -85,6 +96,8 @@ class LoginActivity : AppCompatActivity() {
         if (target != null) {
             startActivity(Intent(this, target))
             finish()
+        } else {
+            binding.errorText.text = "Logged in, but got an unrecognized role from the server: '$userType'"
         }
     }
 

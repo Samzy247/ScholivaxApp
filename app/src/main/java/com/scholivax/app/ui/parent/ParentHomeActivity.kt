@@ -2,11 +2,11 @@ package com.scholivax.app.ui.parent
 
 import android.content.Intent
 import android.os.Bundle
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.scholivax.app.data.remote.ApiClient
 import com.scholivax.app.databinding.ActivityParentHomeBinding
+import com.scholivax.app.databinding.RowChildStatusBinding
 import com.scholivax.app.ui.common.CircularsActivity
 import com.scholivax.app.util.SessionManager
 import kotlinx.coroutines.launch
@@ -34,8 +34,6 @@ class ParentHomeActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Refresh every time the parent opens this screen or taps back into
-        // it from a notification, so it reflects the latest scan.
         loadChildrenStatus()
     }
 
@@ -49,25 +47,40 @@ class ParentHomeActivity : AppCompatActivity() {
 
                 if (response.isSuccessful && children != null) {
                     if (children.isEmpty()) {
-                        addLine("No linked students found.")
+                        addStatusRow("No linked students found.", marked = null)
                     }
                     for (child in children) {
-                        val status = if (child.marked) "Marked present ✓" else "Not marked yet"
-                        addLine("${child.name}: $status")
+                        addStatusRow(child.name, marked = child.marked)
                     }
                 } else {
-                    addLine("Couldn't load attendance right now.")
+                    addStatusRow("Couldn't load attendance right now.", marked = null)
                 }
             } catch (e: Exception) {
-                addLine("You're offline — attendance status needs a connection.")
+                addStatusRow("You're offline — attendance status needs a connection.", marked = null)
             }
         }
     }
 
-    private fun addLine(text: String) {
-        val tv = TextView(this)
-        tv.text = text
-        tv.setPadding(0, 8, 0, 8)
-        binding.childrenContainer.addView(tv)
+    private fun addStatusRow(name: String, marked: Boolean?) {
+        val row = RowChildStatusBinding.inflate(layoutInflater, binding.childrenContainer, false)
+        row.childName.text = name
+        when (marked) {
+            true -> {
+                row.childStatusChip.text = "Present ✓"
+                row.childStatusChip.setBackgroundResource(com.scholivax.app.R.drawable.bg_pill_success)
+                row.childStatusChip.setTextColor(getColor(com.scholivax.app.R.color.success))
+            }
+            false -> {
+                row.childStatusChip.text = "Not marked yet"
+                row.childStatusChip.setBackgroundResource(com.scholivax.app.R.drawable.bg_pill_error)
+                row.childStatusChip.setTextColor(getColor(com.scholivax.app.R.color.error))
+            }
+            null -> {
+                row.childStatusChip.text = ""
+                row.childStatusChip.setBackgroundResource(com.scholivax.app.R.drawable.bg_pill_neutral)
+            }
+        }
+        binding.childrenContainer.addView(row.root)
     }
 }
+

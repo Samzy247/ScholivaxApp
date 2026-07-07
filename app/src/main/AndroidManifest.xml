@@ -13,7 +13,8 @@
         android:icon="@mipmap/ic_launcher"
         android:label="Scholivax"
         android:theme="@style/Theme.Scholivax"
-        android:usesCleartextTraffic="false">
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".ui.login.LoginActivity"
