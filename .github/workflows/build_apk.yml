@@ -32,6 +32,18 @@ jobs:
           rm -rf scholivax_scaffold/lib
           cp -r app/lib scholivax_scaffold/lib
 
+      - name: Ensure release build has internet permission
+        # flutter create's default template only puts INTERNET /
+        # ACCESS_NETWORK_STATE in the debug-only manifest, so a real
+        # `flutter build apk --release` otherwise ships with no network
+        # access at all — this adds them to the main manifest that release
+        # actually uses.
+        run: |
+          MANIFEST=scholivax_scaffold/android/app/src/main/AndroidManifest.xml
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST"
+          cat "$MANIFEST"
+
       - name: Install dependencies
         working-directory: scholivax_scaffold
         run: flutter pub get
