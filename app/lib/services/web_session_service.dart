@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' as io;
 import '../models/school.dart';
 import 'api_client.dart' show NoConnectionException;
 
@@ -11,16 +11,20 @@ import 'api_client.dart' show NoConnectionException;
 /// takes a single "email" field for every role — it's the same field
 /// checked against `roll` for students — so no role parameter is needed
 /// here, unlike the token API.
+///
+/// Uses `dart:io`'s Cookie type explicitly (aliased as `io.Cookie`) since
+/// flutter_inappwebview ALSO defines a class called Cookie — without the
+/// alias, Dart can't tell which one a bare `Cookie` reference means.
 class WebSessionService {
   /// Returns the list of cookies to hand to the WebView, e.g. [ci_session=...].
   /// Throws [NoConnectionException] if the site can't be reached, or
   /// [WebLoginException] if the login itself was rejected.
-  static Future<List<Cookie>> login({
+  static Future<List<io.Cookie>> login({
     required School school,
     required String identifier,
     required String password,
   }) async {
-    final client = HttpClient();
+    final client = io.HttpClient();
     try {
       final uri = Uri.parse('${school.baseUrl}/login/validate_login');
       final request = await client.postUrl(uri).timeout(const Duration(seconds: 15));
@@ -45,9 +49,9 @@ class WebSessionService {
       }
 
       return cookies;
-    } on SocketException {
+    } on io.SocketException {
       throw NoConnectionException();
-    } on HttpException {
+    } on io.HttpException {
       throw NoConnectionException();
     } finally {
       client.close();

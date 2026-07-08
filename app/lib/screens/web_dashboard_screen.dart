@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
@@ -14,9 +14,13 @@ import 'school_select_screen.dart';
 /// rebuilding. The only screens built natively are the offline-capable
 /// ones (attendance scanning, score entry — Phase 3), which live outside
 /// this WebView entirely.
+///
+/// `sessionCookies` uses `dart:io`'s Cookie type (aliased as `io.Cookie`)
+/// since flutter_inappwebview ALSO defines its own class called Cookie —
+/// without the alias, Dart can't tell the two apart.
 class WebDashboardScreen extends StatefulWidget {
   final UserSession session;
-  final List<Cookie> sessionCookies;
+  final List<io.Cookie> sessionCookies;
 
   const WebDashboardScreen({
     super.key,
@@ -57,7 +61,7 @@ class _WebDashboardScreenState extends State<WebDashboardScreen> {
     _pullToRefresh = PullToRefreshController(
       settings: PullToRefreshSettings(color: const Color(0xFF1A2E45)),
       onRefresh: () async {
-        if (Platform.isAndroid) {
+        if (io.Platform.isAndroid) {
           _controller?.reload();
         } else {
           final url = await _controller?.getUrl();
