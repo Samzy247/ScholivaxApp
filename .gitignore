@@ -1,0 +1,6 @@
+scholivax_scaffold/
+build/
+.dart_tool/
+.packages
+*.iml
+.idea/
