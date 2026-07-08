@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/session_store.dart';
-import 'dashboard_screen.dart';
+import 'web_dashboard_screen.dart';
 import 'school_select_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -24,8 +24,15 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     if (session != null) {
+      // No fresh cookies to hand over here — the embedded WebView's own
+      // cookie store already persists the ci_session cookie from last
+      // time (same as a normal browser). If it's expired, the WebView
+      // will simply show the site's own login page, same as a browser
+      // would.
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => DashboardScreen(session: session)),
+        MaterialPageRoute(
+          builder: (_) => WebDashboardScreen(session: session, sessionCookies: const []),
+        ),
       );
     } else {
       Navigator.of(context).pushReplacement(
