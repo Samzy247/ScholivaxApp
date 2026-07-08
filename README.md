@@ -1,70 +1,101 @@
-# Scholivax App — Phase 2 (App Shell + WebView Dashboard)
+# Scholivax App (Phase 2.5 — Modern Dashboard + WebView Portals)
 
-Splash → Select School → Select Role → Login → **your actual website**,
-embedded, authenticated, and running as-is — full feature parity with
-zero pages rebuilt natively.
+Splash → Select School → Select Role → Login → Dashboard, wired to the
+Phase 1 backend endpoints (`/api/schools/list`, `/api/auth/login`).
 
-## How login → dashboard actually works now
-Your web login (`Login::validate_login`) sets a `ci_session` cookie and
-already redirects to the right dashboard per role — same field (`email`)
-for everyone, including students (checked against `roll` server-side).
-So the app:
-1. Logs in against the **real website** (`WebSessionService`), the exact
-   same way a browser would, and captures that `ci_session` cookie.
-2. Also grabs an API token in the background (Phase 1's `/api/auth/login`)
-   for the *offline-only* screens coming in Phase 3 — this part is
-   best-effort and never blocks login.
-3. Hands the cookie to an embedded WebView (`flutter_inappwebview`) and
-   loads `https://<subdomain>.scholivax.top/` — your site's own logic
-   takes it from there and redirects to the correct dashboard.
+The Dashboard now has a color-coded header per role (Admin/Teacher/Student/
+Parent), "Offline Tools" cards (Circulars, Attendance, Marks — native,
+built in Phase 3), and a full grid of cards for every other page of the
+website, grouped by section, each opening in an in-app WebView with Home
+and Back navigation.
 
-Everything on the website — every module, every page — is immediately
-available in the app this way, automatically, because it's the same
-website. Only two screens will be built natively (Phase 3): attendance
-scanning and score entry, specifically because those need to keep working
-with no internet.
+## What's here
+```
+app/
+  pubspec.yaml       — dependencies (http, shared_preferences, connectivity_plus,
+                        google_fonts, webview_flutter)
+  lib/
+    main.dart
+    theme/           — AppTheme (Poppins font, brand colors, per-role gradients)
+    constants/       — PortalMenu: role → grouped list of website pages
+    models/          — School, UserSession
+    services/        — ApiClient, SchoolService, AuthService, SessionStore
+    screens/         — Splash, SchoolSelect, RoleSelect, Login, Dashboard, WebView
+    widgets/         — NoInternetView, PortalSectionView/OfflineQuickActions
+.github/workflows/build_apk.yml   — builds the APK on GitHub's servers
+backend_fix/controllers/api/Auth.php  — drop-in fix, see "Backend fix" below
+```
 
-## What's new in this update
-- `flutter_inappwebview` — the embedded browser.
-- `google_fonts` — Poppins applied app-wide (native screens use it
-  directly via the theme; the WebView also gets a Poppins stylesheet
-  injected via JS once each page loads, layered on top of the site's own
-  CSS — icon fonts are excluded from the override so icons don't break).
-- Pull-to-refresh inside the WebView (native `PullToRefreshController`,
-  not just the earlier screens).
-- No-internet detection before the WebView loads *and* if it fails mid-load.
-- Logout now also clears the WebView's cookies (`CookieManager.deleteAllCookies()`),
-  not just the local app session — otherwise the website would silently
-  stay logged in next time.
+`app/` is **not** a full Flutter project by itself — it's missing the
+`android/`, `ios/` native folders on purpose. The GitHub Actions workflow
+generates those fresh every build using the real `flutter create` command
+(so they're always in sync with whatever current Flutter version GitHub
+installs), then drops this `lib/` and `pubspec.yaml` on top. You never
+touch native Android files directly.
 
-## Known, expected behavior (not a bug)
-- If you re-open the app after the 2-hour PHP session expires, the
-  WebView will show the site's own login page instead of jumping straight
-  to the dashboard — same as what a browser would do. You just log in
-  again there.
-- The "Coming up next" cards from the old placeholder dashboard are gone —
-  replaced by the real thing.
+## How to build the APK
 
-## Build & test — same as before
-Push to GitHub, the Action builds the APK, download it from Artifacts.
-Test checklist:
-- School select, search, pull-to-refresh — unchanged, still works.
-- Role select → Login (staff or student) → should land you inside a
-  WebView showing your actual admin/teacher/student dashboard, styled in
-  Poppins.
-- Pull down inside the dashboard WebView → should refresh the page.
-- Navigate around inside the WebView (circulars, attendance, marks,
-  whatever exists on the site already) — all of it should just work,
-  since it's the real site.
-- Turn on Airplane Mode, reload → "No internet connection" screen with Retry.
-- Logout → back to Select School, and the website itself should also show
-  as logged out if you open it in a normal browser.
+1. Push this whole folder to a GitHub repo (e.g. `ScholivaxApp`) — you can
+   do this from Termux with plain `git`:
+   ```bash
+   cd ~/ScholivaxApp
+   git init
+   git add .
+   git commit -m "Phase 2: app shell"
+   git branch -M main
+   git remote add origin https://github.com/<you>/ScholivaxApp.git
+   git push -u origin main
+   ```
+2. On GitHub.com, open the repo → **Actions** tab. The "Build Scholivax
+   APK" workflow runs automatically on every push to `main` (or trigger it
+   manually with the "Run workflow" button).
+3. When it finishes (a few minutes), open the completed run → scroll to
+   **Artifacts** → download `scholivax-app-release`. That's a zip
+   containing `app-release.apk`. Unzip it, copy the APK to your phone,
+   install it (you'll need to allow "install unknown apps" once).
 
-## Next: Phase 3
-- Native, offline-capable attendance scanning + score entry (SQLite +
-  background sync using the Phase 1 API token).
-- Push notifications for circulars (backend already sends them — app
-  doesn't listen yet).
-- Parent login (phone number + default password `parent123`) — later,
-  per your plan.
+## What to test
+- Splash shows briefly, then goes to Select School (list from your live
+  `/api/schools/list`).
+- Search box filters the list as you type.
+- Pull down to refresh the school list.
+- Tapping a school → Role select → Admin/Teacher or Student.
+- Admin/Teacher asks for email; Student asks for Registration Number.
+- A correct login goes to the Dashboard and shows your name and role.
+- A wrong password shows an inline error, not a crash.
+- Turn on Airplane Mode before opening the school list → you should see
+  the "No internet connection" screen with a Retry button instead of a
+  blank/frozen screen.
+- Close and reopen the app after logging in — it should skip straight to
+  the Dashboard (session is remembered).
+- Tap the logout icon on the Dashboard — should return you to Select School.
 
+## Known gaps (next phases)
+- No offline SQLite storage yet — that's Phase 3, specifically for the
+  attendance-scanning and score-entry screens you asked to work without
+  internet. Circulars / Attendance / Marks stay as "Offline Tools" cards
+  on the dashboard until then.
+- Push notifications (FCM) aren't wired into the app yet — the backend
+  already sends them; the app just doesn't listen for them yet. The bell
+  icon on the dashboard is currently a placeholder.
+- Parent login (phone number + default password) is intentionally not
+  built yet, per your "later update" plan.
+- **WebView single sign-on**: every portal card opens `https://<subdomain>.scholivax.top/<page>`
+  in an in-app WebView, with `app_token`/`app_uid` appended as query params.
+  The backend doesn't read those yet, so the *first* visit to any page in a
+  session will show the normal website login form. Once you want true
+  single sign-on (skip that login), add a small "session bridge" endpoint
+  on the backend (mirroring the existing `superadmin_bridge/enter` pattern)
+  that trusts `app_token`, looks it up in `api_token`, and sets the same
+  session vars `Login_model::loginFunctionForAllUsers()` sets on a normal
+  login. Happy to build that next.
+
+## Backend fix included in this update
+`application/controllers/api/Auth.php` only checked the `admin`, `teacher`,
+`parent`, and `student` tables. The website's own login
+(`Login_model::loginFunctionForAllUsers()`) also checks `hrm`, `hostel`,
+`accountant`, and `librarian` — so any account in one of those four tables
+always got "Invalid login details" from the app, even with the correct
+password. Fixed to check the same tables, in the same order, as the web
+login. See `backend_fix/controllers/api/Auth.php` — replace your existing
+file with it.

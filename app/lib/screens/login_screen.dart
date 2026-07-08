@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import '../models/school.dart';
-import '../models/user_session.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
-import '../services/web_session_service.dart';
-import 'web_dashboard_screen.dart';
+import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final School school;
@@ -41,48 +39,19 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Primary: log into the real website so we get a real session
-      // cookie — this is what the WebView dashboard runs on.
-      final cookies = await WebSessionService.login(
+      final session = await AuthService.login(
         school: widget.school,
+        role: _isStudent ? 'student' : '',
         identifier: identifier,
         password: password,
       );
-
-      // Secondary, best-effort: also grab an API token for the offline-
-      // capable native screens (attendance/scores, Phase 3). If this
-      // fails, the WebView experience still works fine — offline features
-      // just won't sync until the next successful login.
-      var session = UserSession(
-        token: '',
-        userType: _isStudent ? 'student' : 'staff',
-        userId: 0,
-        name: null,
-        schoolName: widget.school.name,
-        subdomain: widget.school.subdomain,
-      );
-      try {
-        session = await AuthService.login(
-          school: widget.school,
-          role: _isStudent ? 'student' : '',
-          identifier: identifier,
-          password: password,
-        );
-      } catch (_) {
-        // non-fatal
-      }
-
       await SessionStore.save(session);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(
-          builder: (_) => WebDashboardScreen(session: session, sessionCookies: cookies),
-        ),
+        MaterialPageRoute(builder: (_) => DashboardScreen(session: session)),
         (route) => false,
       );
     } on NoConnectionException catch (e) {
-      setState(() => _errorMessage = e.message);
-    } on WebLoginException catch (e) {
       setState(() => _errorMessage = e.message);
     } on ApiException catch (e) {
       setState(() => _errorMessage = e.message);
