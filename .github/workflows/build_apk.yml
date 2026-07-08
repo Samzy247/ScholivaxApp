@@ -48,6 +48,17 @@ jobs:
         working-directory: scholivax_scaffold
         run: flutter pub get
 
+      - name: Patch flutter_inappwebview's outdated proguard reference
+        # flutter_inappwebview_android's own build.gradle still calls
+        # getDefaultProguardFile('proguard-android.txt'), which newer
+        # Android Gradle Plugin/R8 versions reject outright. This is a
+        # bug in that plugin release, not our code — patch the cached
+        # package file directly so the build can proceed.
+        run: |
+          PUB_CACHE_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
+          find "$PUB_CACHE_DIR/hosted" -path "*flutter_inappwebview_android*/android/build.gradle" -print -exec \
+            sed -i "s/getDefaultProguardFile('proguard-android.txt')/getDefaultProguardFile('proguard-android-optimize.txt')/g" {} \;
+
       - name: Build release APK
         working-directory: scholivax_scaffold
         run: flutter build apk --release
