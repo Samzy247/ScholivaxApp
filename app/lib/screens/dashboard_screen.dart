@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
+import '../services/web_cookie_bridge.dart';
 import '../theme/app_theme.dart';
+import '../widgets/no_internet_view.dart';
 import '../widgets/portal_grid.dart';
 import 'school_select_screen.dart';
 
@@ -20,6 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   late final List<PortalSection> _sections;
   late final Map<String, GlobalKey> _sectionKeys;
   int _navIndex = 0;
+  int _tabIndex = 0; // 0 = Home (live analytics), 1 = Menu (portal grid)
 
   @override
   void initState() {
@@ -37,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _logout() async {
     await AuthService.logout(widget.session);
     await SessionStore.clear();
+    await WebCookieBridge.clear();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(builder: (_) => const SchoolSelectScreen()),
@@ -48,25 +55,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
-  void _scrollToTop() {
-    _scrollController.animateTo(0, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
+  void _goHome() {
+    setState(() {
+      _navIndex = 0;
+      _tabIndex = 0;
+    });
   }
 
-  void _scrollToSection(String title) {
-    final ctx = _sectionKeys[title]?.currentContext;
-    if (ctx != null) {
-      Scrollable.ensureVisible(
-        ctx,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOut,
-        alignment: 0.05,
-      );
-    }
+  void _scrollToSection(int navIndex, String title) {
+    setState(() {
+      _navIndex = navIndex;
+      _tabIndex = 1;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _sectionKeys[title]?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeOut,
+          alignment: 0.05,
+        );
+      }
+    });
+  }
+
+  void _openMenu(int navIndex) {
+    setState(() {
+      _navIndex = navIndex;
+      _tabIndex = 1;
+    });
   }
 
   /// A handful of section titles surfaced as bottom-nav shortcuts, curated
-  /// per role. Everything is still reachable by scrolling — these are just
-  /// quick jumps, same idea as the reference dashboards' bottom tab bar.
+  /// per role. Tapping one jumps into the Menu tab, scrolled to that
+  /// section. Everything is still reachable by scrolling the Menu tab too.
   List<String> get _shortcutTitles {
     switch (widget.session.userType) {
       case 'admin':
@@ -105,45 +128,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final shortcuts = _shortcutTitles;
 
     final navItems = <_NavEntry>[
-      _NavEntry(icon: Icons.home_rounded, label: 'Home', onTap: _scrollToTop),
-      for (final title in shortcuts)
+      _NavEntry(icon: Icons.home_rounded, label: 'Home', onTap: _goHome),
+      for (int i = 0; i < shortcuts.length; i++)
         _NavEntry(
-          icon: _sections.firstWhere((s) => s.title == title).items.first.icon,
-          label: title.split(' ').first,
-          onTap: () => _scrollToSection(title),
+          icon: _sections.firstWhere((s) => s.title == shortcuts[i]).items.first.icon,
+          label: shortcuts[i].split(' ').first,
+          onTap: () => _scrollToSection(i + 1, shortcuts[i]),
         ),
       if (_sections.isNotEmpty)
         _NavEntry(
           icon: Icons.apps_rounded,
           label: 'More',
-          onTap: () => _scrollToSection(_sections.last.title),
+          onTap: () => _openMenu(shortcuts.length + 1),
         ),
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        child: CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            SliverToBoxAdapter(child: _Header(session: session, gradient: gradient, roleLabel: _roleLabel(session.userType), onLogout: _logout)),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-              sliver: SliverList(
-                delegate: SliverChildListDelegate([
-                  OfflineQuickActions(),
-                  const SizedBox(height: 28),
-                  for (final section in _sections) ...[
-                    Container(key: _sectionKeys[section.title]),
-                    PortalSectionView(section: section, session: session, accent: accent),
-                    const SizedBox(height: 28),
-                  ],
-                ]),
-              ),
-            ),
-          ],
-        ),
+      body: IndexedStack(
+        index: _tabIndex,
+        children: [
+          _HomeAnalyticsTab(session: session, gradient: gradient, roleLabel: _roleLabel(session.userType), onLogout: _logout),
+          _MenuTab(
+            session: session,
+            gradient: gradient,
+            accent: accent,
+            roleLabel: _roleLabel(session.userType),
+            onLogout: _logout,
+            onRefresh: _refresh,
+            scrollController: _scrollController,
+            sections: _sections,
+            sectionKeys: _sectionKeys,
+          ),
+        ],
       ),
       bottomNavigationBar: navItems.length > 1
           ? BottomNavigationBar(
@@ -152,10 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               selectedItemColor: accent,
               unselectedItemColor: Colors.grey,
               showUnselectedLabels: true,
-              onTap: (index) {
-                setState(() => _navIndex = index);
-                navItems[index].onTap();
-              },
+              onTap: (index) => navItems[index].onTap(),
               items: [
                 for (final item in navItems)
                   BottomNavigationBarItem(icon: Icon(item.icon), label: item.label),
@@ -173,13 +187,192 @@ class _NavEntry {
   _NavEntry({required this.icon, required this.label, required this.onTap});
 }
 
-class _Header extends StatelessWidget {
+/// Home tab — loads the ACTUAL website dashboard page for this role (the
+/// same charts/analytics visible in a browser), live, inside the
+/// authenticated in-app WebView. This is intentionally not rebuilt
+/// natively: it's the real page, so it always matches the site exactly.
+class _HomeAnalyticsTab extends StatefulWidget {
   final UserSession session;
   final List<Color> gradient;
   final String roleLabel;
   final VoidCallback onLogout;
 
-  const _Header({required this.session, required this.gradient, required this.roleLabel, required this.onLogout});
+  const _HomeAnalyticsTab({
+    required this.session,
+    required this.gradient,
+    required this.roleLabel,
+    required this.onLogout,
+  });
+
+  @override
+  State<_HomeAnalyticsTab> createState() => _HomeAnalyticsTabState();
+}
+
+class _HomeAnalyticsTabState extends State<_HomeAnalyticsTab> {
+  InAppWebViewController? _controller;
+  PullToRefreshController? _pullToRefresh;
+  bool _loading = true;
+  bool _noConnection = false;
+  double _progress = 0;
+
+  String get _url => '${widget.session.baseUrl}${widget.session.dashboardPath}';
+
+  @override
+  void initState() {
+    super.initState();
+    _pullToRefresh = PullToRefreshController(
+      settings: PullToRefreshSettings(color: widget.gradient.first),
+      onRefresh: () async {
+        await _checkConnectionThenLoad();
+      },
+    );
+  }
+
+  Future<void> _checkConnectionThenLoad() async {
+    final result = await Connectivity().checkConnectivity();
+    final offline = result.contains(ConnectivityResult.none) || result.isEmpty;
+    if (!mounted) return;
+    setState(() => _noConnection = offline);
+    if (!offline) {
+      await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
+    } else {
+      _pullToRefresh?.endRefreshing();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(20, 56, 20, 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: widget.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${widget.roleLabel} Dashboard',
+                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: _checkConnectionThenLoad,
+                tooltip: 'Refresh',
+                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+              ),
+              IconButton(
+                onPressed: widget.onLogout,
+                tooltip: 'Logout',
+                icon: const Icon(Icons.logout_rounded, color: Colors.white),
+              ),
+            ],
+          ),
+        ),
+        if (_progress > 0 && _progress < 1) LinearProgressIndicator(value: _progress, minHeight: 2),
+        Expanded(
+          child: _noConnection
+              ? NoInternetView(onRetry: _checkConnectionThenLoad)
+              : Stack(
+                  children: [
+                    InAppWebView(
+                      initialUrlRequest: URLRequest(url: WebUri(_url)),
+                      initialSettings: InAppWebViewSettings(
+                        javaScriptEnabled: true,
+                        useOnLoadResource: false,
+                        supportZoom: false,
+                        domStorageEnabled: true,
+                      ),
+                      pullToRefreshController: _pullToRefresh,
+                      onWebViewCreated: (controller) => _controller = controller,
+                      onProgressChanged: (controller, progress) {
+                        setState(() => _progress = progress / 100);
+                      },
+                      onLoadStop: (controller, url) {
+                        _pullToRefresh?.endRefreshing();
+                        if (mounted) setState(() => _loading = false);
+                      },
+                      onReceivedError: (controller, request, error) {
+                        _pullToRefresh?.endRefreshing();
+                        if (mounted && (request.isForMainFrame ?? true)) {
+                          setState(() {
+                            _loading = false;
+                            _noConnection = true;
+                          });
+                        }
+                      },
+                    ),
+                    if (_loading)
+                      const Center(child: CircularProgressIndicator(color: AppColors.navy)),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Menu tab — the native card grid used to jump to any page of the site
+/// (Subjects, HRM, CBT, etc.), plus the offline-first quick actions.
+class _MenuTab extends StatelessWidget {
+  final UserSession session;
+  final List<Color> gradient;
+  final Color accent;
+  final String roleLabel;
+  final VoidCallback onLogout;
+  final Future<void> Function() onRefresh;
+  final ScrollController scrollController;
+  final List<PortalSection> sections;
+  final Map<String, GlobalKey> sectionKeys;
+
+  const _MenuTab({
+    required this.session,
+    required this.gradient,
+    required this.accent,
+    required this.roleLabel,
+    required this.onLogout,
+    required this.onRefresh,
+    required this.scrollController,
+    required this.sections,
+    required this.sectionKeys,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        controller: scrollController,
+        slivers: [
+          SliverToBoxAdapter(child: _MenuHeader(session: session, gradient: gradient, roleLabel: roleLabel, onLogout: onLogout)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                OfflineQuickActions(),
+                const SizedBox(height: 28),
+                for (final section in sections) ...[
+                  Container(key: sectionKeys[section.title]),
+                  PortalSectionView(section: section, session: session, accent: accent),
+                  const SizedBox(height: 28),
+                ],
+              ]),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MenuHeader extends StatelessWidget {
+  final UserSession session;
+  final List<Color> gradient;
+  final String roleLabel;
+  final VoidCallback onLogout;
+
+  const _MenuHeader({required this.session, required this.gradient, required this.roleLabel, required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -198,9 +391,9 @@ class _Header extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '$roleLabel Dashboard',
-                      style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                    const Text(
+                      'Menu',
+                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -213,56 +406,16 @@ class _Header extends StatelessWidget {
                 ),
               ),
               IconButton(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('No new notifications yet.')),
-                ),
-                icon: const Icon(Icons.notifications_none_rounded, color: Colors.white),
-              ),
-              IconButton(
                 onPressed: onLogout,
                 tooltip: 'Logout',
                 icon: const Icon(Icons.logout_rounded, color: Colors.white),
               ),
             ],
           ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    (session.name?.isNotEmpty == true ? session.name![0] : '?').toUpperCase(),
-                    style: TextStyle(color: gradient.first, fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Welcome, ${session.name ?? roleLabel}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'Tap any card below to open it',
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 16),
+          const Text(
+            'Tap any card below to open it',
+            style: TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
       ),

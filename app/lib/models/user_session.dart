@@ -17,6 +17,24 @@ class UserSession {
 
   String get baseUrl => 'https://$subdomain.scholivax.top';
 
+  /// The real website's per-role dashboard page — where its actual
+  /// analytics/charts live. Note this is NOT the same as [baseUrl] alone:
+  /// the bare domain serves the public marketing homepage regardless of
+  /// login state, so Home must load this specific path to show analytics.
+  String get dashboardPath {
+    switch (userType) {
+      case 'admin':
+        return '/admin/dashboard';
+      case 'teacher':
+        return '/teacher/dashboard';
+      case 'parent':
+        return '/parents/dashboard';
+      case 'student':
+      default:
+        return '/student/dashboard';
+    }
+  }
+
   Map<String, String> toPrefsMap() => {
         'token': token,
         'userType': userType,

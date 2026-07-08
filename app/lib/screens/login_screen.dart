@@ -3,6 +3,8 @@ import '../models/school.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
+import '../services/web_cookie_bridge.dart';
+import '../services/web_session_service.dart';
 import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -45,6 +47,24 @@ class _LoginScreenState extends State<LoginScreen> {
         identifier: identifier,
         password: password,
       );
+
+      // Also log into the real website so the embedded WebView pages (the
+      // portal cards, the main dashboard) are authenticated with a real
+      // ci_session cookie instead of showing their own login form or
+      // crashing on missing session data. Best-effort: the app still works
+      // via the token API even if this fails (e.g. site temporarily down).
+      try {
+        final webCookies = await WebSessionService.login(
+          school: widget.school,
+          identifier: identifier,
+          password: password,
+        );
+        await WebCookieBridge.apply(session.baseUrl, webCookies);
+      } catch (_) {
+        // Non-fatal — embedded pages will simply prompt for login until
+        // this succeeds on a future attempt.
+      }
+
       await SessionStore.save(session);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

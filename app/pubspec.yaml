@@ -14,7 +14,6 @@ dependencies:
   connectivity_plus: ^6.0.3
   cupertino_icons: ^1.0.6
   google_fonts: ^6.2.1
-  webview_flutter: ^4.10.0
   flutter_inappwebview: ^6.1.5
 
 dev_dependencies:
