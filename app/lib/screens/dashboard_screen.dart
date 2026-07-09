@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../widgets/dashboard/native_dashboard.dart';
 import '../widgets/portal_grid.dart';
 import 'school_select_screen.dart';
+import 'webview_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final UserSession session;
@@ -19,23 +20,13 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _scrollController = ScrollController();
+  final _dashboardKey = GlobalKey<NativeDashboardState>();
   late final List<PortalSection> _sections;
-  late final Map<String, GlobalKey> _sectionKeys;
-  int _navIndex = 0;
-  int _tabIndex = 0; // 0 = Home (live analytics), 1 = Menu (portal grid)
 
   @override
   void initState() {
     super.initState();
     _sections = PortalMenu.forRole(widget.session.userType);
-    _sectionKeys = {for (final s in _sections) s.title: GlobalKey()};
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
   }
 
   Future<void> _logout() async {
@@ -69,59 +60,68 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Future<void> _refresh() async {
-    await Future.delayed(const Duration(milliseconds: 500));
+  void _openItem(PortalItem item) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WebViewScreen(title: item.label, path: item.path, session: widget.session),
+      ),
+    );
   }
 
-  void _goHome() {
-    setState(() {
-      _navIndex = 0;
-      _tabIndex = 0;
-    });
+  /// A section with exactly one link goes straight there — a bottom sheet
+  /// with a single row in it is just an extra tap for no reason.
+  void _openSection(PortalSection section) {
+    if (section.items.length == 1) {
+      _openItem(section.items.first);
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _SectionSheet(section: section, onSelect: _openItem),
+    );
   }
 
-  void _scrollToSection(int navIndex, String title) {
-    setState(() {
-      _navIndex = navIndex;
-      _tabIndex = 1;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = _sectionKeys[title]?.currentContext;
-      if (ctx != null) {
-        Scrollable.ensureVisible(
-          ctx,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeOut,
-          alignment: 0.05,
-        );
-      }
-    });
+  /// Sections not already reachable via a bottom-nav shortcut — shown
+  /// together in one scrollable sheet instead of a dedicated "More" page.
+  void _openMore(List<PortalSection> sections) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MoreSheet(sections: sections, onSelect: _openItem),
+    );
   }
 
-  void _openMenu(int navIndex) {
-    setState(() {
-      _navIndex = navIndex;
-      _tabIndex = 1;
-    });
-  }
-
-  /// A handful of section titles surfaced as bottom-nav shortcuts, curated
-  /// per role. Tapping one jumps into the Menu tab, scrolled to that
-  /// section. Everything is still reachable by scrolling the Menu tab too.
+  /// Section titles surfaced as bottom-nav shortcuts, curated per role —
+  /// tapping one pops up a bottom sheet with that section's links.
   List<String> get _shortcutTitles {
     switch (widget.session.userType) {
       case 'admin':
         return const ['Students', 'Staff & HR', 'Exams & CBT'];
       case 'teacher':
-        return const ['Classes', 'Exams & CBT', 'My Work'];
+        return const ['Classes', 'Exams & CBT', 'Report Card', 'Profile'];
       case 'student':
-        return const ['Academics', 'Exams', 'Classes'];
+        return const ['Academics', 'Exams', 'Classes', 'Fees & Profile'];
       case 'parent':
         return const ['My Child', 'Fees & Profile'];
       default:
         return const [];
     }
   }
+
+  // Short, bottom-nav-friendly label per section title (falls back to the
+  // first word of the title when there's no override needed).
+  static const _navLabelOverrides = <String, String>{
+    'Exams & CBT': 'Exams',
+    'Staff & HR': 'Staff',
+    'Fees & Profile': 'Fees',
+    'Report Card': 'Report',
+    'My Child': 'My Child',
+  };
+
+  String _navLabel(String title) => _navLabelOverrides[title] ?? title.split(' ').first;
 
   String _roleLabel(String userType) {
     switch (userType) {
@@ -142,49 +142,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final session = widget.session;
     final gradient = AppColors.headerGradient(session.userType);
-    final accent = gradient.first;
     final shortcuts = _shortcutTitles;
+    final leftoverSections = _sections.where((s) => !shortcuts.contains(s.title)).toList();
 
     final navItems = <_NavEntry>[
-      _NavEntry(icon: Icons.home_rounded, label: 'Home', onTap: _goHome),
-      for (int i = 0; i < shortcuts.length; i++)
+      _NavEntry(icon: Icons.home_rounded, label: 'Home', onTap: () {}),
+      for (final title in shortcuts)
         _NavEntry(
-          icon: _sections.firstWhere((s) => s.title == shortcuts[i]).items.first.icon,
-          label: shortcuts[i].split(' ').first,
-          onTap: () => _scrollToSection(i + 1, shortcuts[i]),
+          icon: _sections.firstWhere((s) => s.title == title).items.first.icon,
+          label: _navLabel(title),
+          onTap: () => _openSection(_sections.firstWhere((s) => s.title == title)),
         ),
-      if (_sections.isNotEmpty)
+      if (leftoverSections.isNotEmpty)
         _NavEntry(
           icon: Icons.apps_rounded,
           label: 'More',
-          onTap: () => _openMenu(shortcuts.length + 1),
+          onTap: () => _openMore(leftoverSections),
         ),
     ];
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FC),
-      body: IndexedStack(
-        index: _tabIndex,
+      body: Column(
         children: [
-          _HomeAnalyticsTab(session: session, gradient: gradient, roleLabel: _roleLabel(session.userType), onLogout: _logout),
-          _MenuTab(
-            session: session,
-            gradient: gradient,
-            accent: accent,
-            roleLabel: _roleLabel(session.userType),
-            onLogout: _logout,
-            onRefresh: _refresh,
-            scrollController: _scrollController,
-            sections: _sections,
-            sectionKeys: _sectionKeys,
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 56, 20, 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_roleLabel(session.userType)} Dashboard',
+                    style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _dashboardKey.currentState?.reload(),
+                  tooltip: 'Refresh',
+                  icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                ),
+                IconButton(
+                  onPressed: _logout,
+                  tooltip: 'Logout',
+                  icon: const Icon(Icons.logout_rounded, color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+            child: const OfflineQuickActions(),
+          ),
+          Expanded(
+            child: NativeDashboard(key: _dashboardKey, session: session),
           ),
         ],
       ),
       bottomNavigationBar: navItems.length > 1
           ? BottomNavigationBar(
-              currentIndex: _navIndex.clamp(0, navItems.length - 1),
+              currentIndex: 0,
               type: BottomNavigationBarType.fixed,
-              selectedItemColor: accent,
+              selectedItemColor: gradient.first,
               unselectedItemColor: Colors.grey,
               showUnselectedLabels: true,
               onTap: (index) => navItems[index].onTap(),
@@ -205,174 +227,137 @@ class _NavEntry {
   _NavEntry({required this.icon, required this.label, required this.onTap});
 }
 
-/// Home tab — loads the ACTUAL website dashboard page for this role (the
-/// same charts/analytics visible in a browser), live, inside the
-/// authenticated in-app WebView. This is intentionally not rebuilt
-/// natively: it's the real page, so it always matches the site exactly.
-class _HomeAnalyticsTab extends StatefulWidget {
-  final UserSession session;
-  final List<Color> gradient;
-  final String roleLabel;
-  final VoidCallback onLogout;
-
-  const _HomeAnalyticsTab({
-    required this.session,
-    required this.gradient,
-    required this.roleLabel,
-    required this.onLogout,
-  });
-
-  @override
-  State<_HomeAnalyticsTab> createState() => _HomeAnalyticsTabState();
-}
-
-class _HomeAnalyticsTabState extends State<_HomeAnalyticsTab> {
-  final _dashboardKey = GlobalKey<NativeDashboardState>();
+/// Bottom sheet listing every link inside a single [PortalSection].
+class _SectionSheet extends StatelessWidget {
+  final PortalSection section;
+  final ValueChanged<PortalItem> onSelect;
+  const _SectionSheet({required this.section, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return _SheetShell(
+      title: section.title,
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 56, 20, 16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: widget.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${widget.roleLabel} Dashboard',
-                  style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
-                ),
-              ),
-              IconButton(
-                onPressed: () => _dashboardKey.currentState?.reload(),
-                tooltip: 'Refresh',
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-              ),
-              IconButton(
-                onPressed: widget.onLogout,
-                tooltip: 'Logout',
-                icon: const Icon(Icons.logout_rounded, color: Colors.white),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: NativeDashboard(key: _dashboardKey, session: widget.session),
-        ),
+        for (final item in section.items) _SheetTile(item: item, onTap: () => _pick(context, item)),
       ],
     );
   }
+
+  void _pick(BuildContext context, PortalItem item) {
+    Navigator.of(context).pop();
+    onSelect(item);
+  }
 }
 
-/// Menu tab — the native card grid used to jump to any page of the site
-/// (Subjects, HRM, CBT, etc.), plus the offline-first quick actions.
-class _MenuTab extends StatelessWidget {
-  final UserSession session;
-  final List<Color> gradient;
-  final Color accent;
-  final String roleLabel;
-  final VoidCallback onLogout;
-  final Future<void> Function() onRefresh;
-  final ScrollController scrollController;
+/// Bottom sheet listing every section not already on the bottom nav,
+/// grouped under their own headings — replaces the old dedicated "More"
+/// page with something that doesn't leave the dashboard.
+class _MoreSheet extends StatelessWidget {
   final List<PortalSection> sections;
-  final Map<String, GlobalKey> sectionKeys;
-
-  const _MenuTab({
-    required this.session,
-    required this.gradient,
-    required this.accent,
-    required this.roleLabel,
-    required this.onLogout,
-    required this.onRefresh,
-    required this.scrollController,
-    required this.sections,
-    required this.sectionKeys,
-  });
+  final ValueChanged<PortalItem> onSelect;
+  const _MoreSheet({required this.sections, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: CustomScrollView(
-        controller: scrollController,
-        slivers: [
-          SliverToBoxAdapter(child: _MenuHeader(session: session, gradient: gradient, roleLabel: roleLabel, onLogout: onLogout)),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                OfflineQuickActions(),
-                const SizedBox(height: 28),
-                for (final section in sections) ...[
-                  Container(key: sectionKeys[section.title]),
-                  PortalSectionView(section: section, session: session, accent: accent),
-                  const SizedBox(height: 28),
-                ],
-              ]),
+    return _SheetShell(
+      title: 'More',
+      scrollable: true,
+      children: [
+        for (final section in sections) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+            child: Text(
+              section.title,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textMuted),
             ),
           ),
+          for (final item in section.items) _SheetTile(item: item, onTap: () => _pick(context, item)),
         ],
+      ],
+    );
+  }
+
+  void _pick(BuildContext context, PortalItem item) {
+    Navigator.of(context).pop();
+    onSelect(item);
+  }
+}
+
+/// Shared rounded-top sheet frame used by both sheet types above.
+class _SheetShell extends StatelessWidget {
+  final String title;
+  final List<Widget> children;
+  final bool scrollable;
+  const _SheetShell({required this.title, required this.children, this.scrollable = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Center(
+          child: Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 6),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+          child: Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(height: 4),
+        ...children,
+        SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
+      ],
+    );
+
+    final decorated = Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: content,
+    );
+
+    if (!scrollable) return decorated;
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (context, controller) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+        ),
+        child: ListView(controller: controller, padding: const EdgeInsets.symmetric(horizontal: 16), children: [content]),
       ),
     );
   }
 }
 
-class _MenuHeader extends StatelessWidget {
-  final UserSession session;
-  final List<Color> gradient;
-  final String roleLabel;
-  final VoidCallback onLogout;
-
-  const _MenuHeader({required this.session, required this.gradient, required this.roleLabel, required this.onLogout});
+class _SheetTile extends StatelessWidget {
+  final PortalItem item;
+  final VoidCallback onTap;
+  const _SheetTile({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 56, 20, 28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+    return ListTile(
+      leading: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(color: AppColors.navy.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+        child: Icon(item.icon, color: AppColors.navy, size: 20),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Menu',
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      session.schoolName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: onLogout,
-                tooltip: 'Logout',
-                icon: const Icon(Icons.logout_rounded, color: Colors.white),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Tap any card below to open it',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-        ],
-      ),
+      title: Text(item.label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+      trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+      onTap: onTap,
     );
   }
 }

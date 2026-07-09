@@ -97,16 +97,21 @@ class PortalMenu {
     ]),
     PortalSection(title: 'Exams & CBT', items: [
       PortalItem(label: 'CBT Exams', icon: Icons.laptop_chromebook_rounded, path: '/teacher/cbt_exam'),
-      PortalItem(label: 'CBT Question Bank', icon: Icons.quiz_rounded, path: '/teacher/cbt_questions'),
-      PortalItem(label: 'CBT Results', icon: Icons.leaderboard_rounded, path: '/teacher/cbt_results'),
     ]),
-    PortalSection(title: 'Students', items: [
-      PortalItem(label: 'Student Remarks', icon: Icons.rate_review_rounded, path: '/teacher/student_remarks'),
-      PortalItem(label: 'Result Sheet', icon: Icons.summarize_rounded, path: '/teacher/printResultSheet'),
+    // "Student Remarks" used to point at /teacher/student_remarks, which is
+    // a POST-only save handler with no page to actually show — always
+    // blank. /teacher/bulk_remarks_page is the real page (auto-selects the
+    // teacher's first class if none given) and has a matching view.
+    // "Result Sheet" used to point at /teacher/printResultSheet, whose view
+    // file (application/views/backend/teacher/printResultSheet.php) simply
+    // doesn't exist on the server — only the admin/parent/student versions
+    // do — so the content area always rendered empty. Pointing at the
+    // subject marksheet page instead, since that one has a real view.
+    PortalSection(title: 'Report Card', items: [
+      PortalItem(label: 'Enter Remarks', icon: Icons.rate_review_rounded, path: '/teacher/bulk_remarks_page'),
+      PortalItem(label: 'Marksheet', icon: Icons.summarize_rounded, path: '/teacher/student_marksheet_subject'),
     ]),
-    PortalSection(title: 'My Work', items: [
-      PortalItem(label: 'Leave Requests', icon: Icons.event_busy_rounded, path: '/teacher/leave'),
-      PortalItem(label: 'Payroll', icon: Icons.request_quote_rounded, path: '/teacher/payroll_list'),
+    PortalSection(title: 'Profile', items: [
       PortalItem(label: 'My Profile', icon: Icons.manage_accounts_rounded, path: '/teacher/manage_profile'),
     ]),
   ];
@@ -120,7 +125,6 @@ class PortalMenu {
     ]),
     PortalSection(title: 'Exams', items: [
       PortalItem(label: 'CBT Exams', icon: Icons.laptop_chromebook_rounded, path: '/student/cbt_exams'),
-      PortalItem(label: 'Online Exam', icon: Icons.edit_document, path: '/student/online_exam'),
     ]),
     PortalSection(title: 'Classes', items: [
       PortalItem(label: 'Live Class', icon: Icons.videocam_rounded, path: '/student/live_class'),
