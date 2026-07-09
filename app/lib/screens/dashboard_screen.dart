@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
@@ -8,7 +6,7 @@ import '../services/auth_service.dart';
 import '../services/session_store.dart';
 import '../services/web_cookie_bridge.dart';
 import '../theme/app_theme.dart';
-import '../widgets/no_internet_view.dart';
+import '../widgets/dashboard/native_dashboard.dart';
 import '../widgets/portal_grid.dart';
 import 'school_select_screen.dart';
 
@@ -209,36 +207,7 @@ class _HomeAnalyticsTab extends StatefulWidget {
 }
 
 class _HomeAnalyticsTabState extends State<_HomeAnalyticsTab> {
-  InAppWebViewController? _controller;
-  PullToRefreshController? _pullToRefresh;
-  bool _loading = true;
-  bool _noConnection = false;
-  double _progress = 0;
-
-  String get _url => '${widget.session.baseUrl}${widget.session.dashboardPath}';
-
-  @override
-  void initState() {
-    super.initState();
-    _pullToRefresh = PullToRefreshController(
-      settings: PullToRefreshSettings(color: widget.gradient.first),
-      onRefresh: () async {
-        await _checkConnectionThenLoad();
-      },
-    );
-  }
-
-  Future<void> _checkConnectionThenLoad() async {
-    final result = await Connectivity().checkConnectivity();
-    final offline = result.contains(ConnectivityResult.none) || result.isEmpty;
-    if (!mounted) return;
-    setState(() => _noConnection = offline);
-    if (!offline) {
-      await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
-    } else {
-      _pullToRefresh?.endRefreshing();
-    }
-  }
+  final _dashboardKey = GlobalKey<NativeDashboardState>();
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +227,7 @@ class _HomeAnalyticsTabState extends State<_HomeAnalyticsTab> {
                 ),
               ),
               IconButton(
-                onPressed: _checkConnectionThenLoad,
+                onPressed: () => _dashboardKey.currentState?.reload(),
                 tooltip: 'Refresh',
                 icon: const Icon(Icons.refresh_rounded, color: Colors.white),
               ),
@@ -270,43 +239,8 @@ class _HomeAnalyticsTabState extends State<_HomeAnalyticsTab> {
             ],
           ),
         ),
-        if (_progress > 0 && _progress < 1) LinearProgressIndicator(value: _progress, minHeight: 2),
         Expanded(
-          child: _noConnection
-              ? NoInternetView(onRetry: _checkConnectionThenLoad)
-              : Stack(
-                  children: [
-                    InAppWebView(
-                      initialUrlRequest: URLRequest(url: WebUri(_url)),
-                      initialSettings: InAppWebViewSettings(
-                        javaScriptEnabled: true,
-                        useOnLoadResource: false,
-                        supportZoom: false,
-                        domStorageEnabled: true,
-                      ),
-                      pullToRefreshController: _pullToRefresh,
-                      onWebViewCreated: (controller) => _controller = controller,
-                      onProgressChanged: (controller, progress) {
-                        setState(() => _progress = progress / 100);
-                      },
-                      onLoadStop: (controller, url) {
-                        _pullToRefresh?.endRefreshing();
-                        if (mounted) setState(() => _loading = false);
-                      },
-                      onReceivedError: (controller, request, error) {
-                        _pullToRefresh?.endRefreshing();
-                        if (mounted && (request.isForMainFrame ?? true)) {
-                          setState(() {
-                            _loading = false;
-                            _noConnection = true;
-                          });
-                        }
-                      },
-                    ),
-                    if (_loading)
-                      const Center(child: CircularProgressIndicator(color: AppColors.navy)),
-                  ],
-                ),
+          child: NativeDashboard(key: _dashboardKey, session: widget.session),
         ),
       ],
     );
