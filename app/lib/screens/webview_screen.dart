@@ -11,11 +11,11 @@ import '../widgets/no_internet_view.dart';
 /// [path] is appended to the logged-in school's base URL, e.g.
 /// `/admin/hrm` -> `https://greenfield.scholivax.top/admin/hrm`.
 ///
-/// Uses flutter_inappwebview — the SAME engine as [WebDashboardScreen] —
-/// so it shares that engine's native CookieManager cookie store. The
-/// `ci_session` cookie set at login time (see WebCookieBridge) is already
-/// present here, so this page loads straight in, already logged in, with
-/// no query-param bridging needed.
+/// Uses flutter_inappwebview — the same engine used for the dashboard's
+/// own embedded pages — so it shares that engine's native CookieManager
+/// cookie store. The `ci_session` cookie set at login time (see
+/// WebCookieBridge) is already present here, so this page loads straight
+/// in, already logged in, with no query-param bridging needed.
 class WebViewScreen extends StatefulWidget {
   final String title;
   final String path;
@@ -39,6 +39,20 @@ class _WebViewScreenState extends State<WebViewScreen> {
   double _progress = 0;
 
   String get _url => '${widget.session.baseUrl}${widget.path}';
+
+  // Hides the website's own page-title/breadcrumb/"Visit Website" header
+  // block (application/views/backend/page_info.php, class `.bg-title`) —
+  // the app already shows the page title in its own AppBar, so this row
+  // is redundant inside the WebView and just wastes vertical space.
+  static const _hideChromeJs = '''
+    (function() {
+      if (document.getElementById('scholivax-app-hide-chrome')) return;
+      var style = document.createElement('style');
+      style.id = 'scholivax-app-hide-chrome';
+      style.innerHTML = '.bg-title { display: none !important; }';
+      document.head.appendChild(style);
+    })();
+  ''';
 
   Future<void> _checkConnectionThenLoad() async {
     final result = await Connectivity().checkConnectivity();
@@ -91,6 +105,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     setState(() => _progress = progress / 100);
                   },
                   onLoadStop: (controller, url) {
+                    controller.evaluateJavascript(source: _hideChromeJs);
                     if (mounted) setState(() => _loading = false);
                   },
                   onReceivedError: (controller, request, error) {
