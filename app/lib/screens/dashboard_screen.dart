@@ -4,6 +4,7 @@ import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
+import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dashboard/native_dashboard.dart';
@@ -51,6 +52,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (confirmed != true) return;
 
     await AuthService.logout(widget.session);
+    try {
+      await NotificationService.unregister(widget.session);
+    } catch (_) {}
     await SessionStore.clear();
     await WebCookieBridge.clear();
     if (!mounted) return;
@@ -191,12 +195,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          Container(
-            width: double.infinity,
-            color: Colors.white,
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-            child: const OfflineQuickActions(),
-          ),
+          if (session.userType != 'student')
+            Container(
+              width: double.infinity,
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+              child: OfflineQuickActions(session: session),
+            ),
           Expanded(
             child: NativeDashboard(key: _dashboardKey, session: session),
           ),

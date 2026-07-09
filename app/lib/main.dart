@@ -1,8 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Guarded: DefaultFirebaseOptions still has placeholder values until a
+  // real Android app config is added (see firebase_options.dart) — until
+  // then this fails quietly and the app runs completely normally, just
+  // without push notifications.
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.android);
+    await NotificationService.init();
+  } catch (_) {
+    // No valid Firebase config yet — rest of the app is unaffected.
+  }
+
   runApp(const ScholivaxApp());
 }
 

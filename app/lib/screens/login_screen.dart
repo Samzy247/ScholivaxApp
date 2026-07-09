@@ -3,6 +3,7 @@ import '../models/school.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/session_store.dart';
+import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
 import '../services/web_session_service.dart';
 import 'dashboard_screen.dart';
@@ -66,6 +67,14 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       await SessionStore.save(session);
+
+      // Best-effort — if Firebase isn't configured yet (see
+      // firebase_options.dart) or there's no connection, this just
+      // silently doesn't register; nothing else in login is affected.
+      try {
+        await NotificationService.registerAndKeepInSync(session);
+      } catch (_) {}
+
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => DashboardScreen(session: session)),

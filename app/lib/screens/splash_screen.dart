@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/session_store.dart';
+import '../services/notification_service.dart';
 import 'dashboard_screen.dart';
 import 'school_select_screen.dart';
 
@@ -24,6 +25,9 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     if (session != null) {
+      try {
+        await NotificationService.registerAndKeepInSync(session);
+      } catch (_) {}
       // No fresh cookies to hand over here — flutter_inappwebview's
       // CookieManager already persists the ci_session cookie from last
       // time (see WebCookieBridge), same as a normal browser. If it's

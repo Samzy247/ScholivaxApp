@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
+import '../screens/offline/attendance_screen.dart';
+import '../screens/offline/circulars_screen.dart';
+import '../screens/offline/marks_screen.dart';
 import '../screens/webview_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -92,21 +95,42 @@ class _PortalTile extends StatelessWidget {
   }
 }
 
-/// The three native, offline-first cards (Circulars, Attendance, Marks) —
-/// these do NOT open the WebView. They stay as placeholders here until
-/// Phase 3 wires up local SQLite storage so they work without internet.
+/// The native, offline-first tools. Circulars work offline for everyone;
+/// Attendance and Marks entry are teacher-only actions, so only teachers
+/// see those two tiles. Admin sees Circulars only for now (marking
+/// attendance/scores is a per-class-teacher action on the website).
 class OfflineQuickActions extends StatelessWidget {
-  final VoidCallback? onTap;
+  final UserSession session;
 
-  const OfflineQuickActions({super.key, this.onTap});
+  const OfflineQuickActions({super.key, required this.session});
+
+  List<({IconData icon, String label, WidgetBuilder builder})> get _tiles {
+    final circulars = (
+      icon: Icons.campaign_outlined,
+      label: 'Circulars',
+      builder: (BuildContext _) => CircularsScreen(session: session),
+    );
+    if (session.userType != 'teacher') {
+      return [circulars];
+    }
+    return [
+      circulars,
+      (
+        icon: Icons.qr_code_scanner_rounded,
+        label: 'Attendance',
+        builder: (BuildContext _) => AttendanceScreen(session: session),
+      ),
+      (
+        icon: Icons.grade_outlined,
+        label: 'Scores / Marks',
+        builder: (BuildContext _) => MarksScreen(session: session),
+      ),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    final tiles = const [
-      (icon: Icons.campaign_outlined, label: 'Circulars'),
-      (icon: Icons.qr_code_scanner_rounded, label: 'Attendance'),
-      (icon: Icons.grade_outlined, label: 'Scores / Marks'),
-    ];
+    final tiles = _tiles;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -131,7 +155,7 @@ class OfflineQuickActions extends StatelessWidget {
               .map((t) => Expanded(
                     child: Padding(
                       padding: const EdgeInsets.only(right: 10),
-                      child: _OfflineTile(icon: t.icon, label: t.label, onTap: onTap),
+                      child: _OfflineTile(icon: t.icon, label: t.label, builder: t.builder),
                     ),
                   ))
               .toList(),
@@ -144,8 +168,8 @@ class OfflineQuickActions extends StatelessWidget {
 class _OfflineTile extends StatelessWidget {
   final IconData icon;
   final String label;
-  final VoidCallback? onTap;
-  const _OfflineTile({required this.icon, required this.label, this.onTap});
+  final WidgetBuilder builder;
+  const _OfflineTile({required this.icon, required this.label, required this.builder});
 
   @override
   Widget build(BuildContext context) {
@@ -157,10 +181,7 @@ class _OfflineTile extends StatelessWidget {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: onTap ??
-            () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Offline support for this is coming in the next update.')),
-                ),
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: builder)),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 6),
           child: Column(
