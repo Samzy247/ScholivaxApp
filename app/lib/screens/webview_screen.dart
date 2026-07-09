@@ -3,8 +3,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../models/user_session.dart';
-import '../theme/app_theme.dart';
 import '../widgets/no_internet_view.dart';
+import '../widgets/full_page_loader.dart';
 
 /// Opens a single page of the full Scholivax website inside the app.
 ///
@@ -58,7 +58,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
     final result = await Connectivity().checkConnectivity();
     final offline = result.contains(ConnectivityResult.none) || result.isEmpty;
     if (!mounted) return;
-    setState(() => _noConnection = offline);
+    setState(() {
+      _noConnection = offline;
+      if (!offline) _loading = true;
+    });
     if (!offline) {
       await _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(_url)));
     }
@@ -117,10 +120,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     }
                   },
                 ),
-                if (_loading)
-                  const Center(
-                    child: CircularProgressIndicator(color: AppColors.navy),
-                  ),
+                Positioned.fill(
+                  child: FullPageLoader(visible: _loading, label: 'Loading ${widget.title}…'),
+                ),
               ],
             ),
     );
