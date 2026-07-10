@@ -66,32 +66,10 @@ jobs:
           GRADLE_KTS=scholivax_scaffold/android/app/build.gradle.kts
           GRADLE_GROOVY=scholivax_scaffold/android/app/build.gradle
           if [ -f "$GRADLE_KTS" ]; then
-            cat >> "$GRADLE_KTS" <<'EOF'
-
-android {
-    compileOptions {
-        isCoreLibraryDesugaringEnabled = true
-    }
-}
-
-dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-}
-EOF
+            printf '%s\n' '' 'android {' '    compileOptions {' '        isCoreLibraryDesugaringEnabled = true' '    }' '}' '' 'dependencies {' '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")' '}' >> "$GRADLE_KTS"
             cat "$GRADLE_KTS"
           elif [ -f "$GRADLE_GROOVY" ]; then
-            cat >> "$GRADLE_GROOVY" <<'EOF'
-
-android {
-    compileOptions {
-        coreLibraryDesugaringEnabled true
-    }
-}
-
-dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
-}
-EOF
+            printf '%s\n' '' 'android {' '    compileOptions {' '        coreLibraryDesugaringEnabled true' '    }' '}' '' 'dependencies {' "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'" '}' >> "$GRADLE_GROOVY"
             cat "$GRADLE_GROOVY"
           else
             echo "No app/build.gradle(.kts) found — scaffold layout changed, needs a look."
