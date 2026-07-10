@@ -32,6 +32,23 @@ jobs:
           rm -rf scholivax_scaffold/lib
           cp -r app/lib scholivax_scaffold/lib
 
+      - name: Set applicationId to match the Firebase app registration
+        # firebase_options.dart's config was generated for the Android app
+        # registered in Firebase as "com.scholivax.app" — but `flutter
+        # create --org com.scholivax scholivax_scaffold` on its own
+        # produces "com.scholivax.scholivax_scaffold" instead. Google Play
+        # Services checks the running app's actual applicationId against
+        # what Firebase has on file, so a mismatch here would make FCM
+        # registration silently fail. Force it to line up. (`namespace` is
+        # compile-time only and doesn't need to match — left alone.)
+        run: |
+          GRADLE_KTS=scholivax_scaffold/android/app/build.gradle.kts
+          GRADLE_GROOVY=scholivax_scaffold/android/app/build.gradle
+          FILE="$GRADLE_KTS"
+          [ -f "$FILE" ] || FILE="$GRADLE_GROOVY"
+          sed -i -E 's/applicationId[[:space:]]*=?[[:space:]]*"[^"]*"/applicationId = "com.scholivax.app"/' "$FILE"
+          grep -n applicationId "$FILE"
+
       - name: Ensure release build has internet + notification permissions
         # flutter create's default template only puts INTERNET /
         # ACCESS_NETWORK_STATE in the debug-only manifest, so a real
