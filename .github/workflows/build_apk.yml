@@ -32,21 +32,71 @@ jobs:
           rm -rf scholivax_scaffold/lib
           cp -r app/lib scholivax_scaffold/lib
 
-      - name: Ensure release build has internet permission
+      - name: Ensure release build has internet + notification permissions
         # flutter create's default template only puts INTERNET /
         # ACCESS_NETWORK_STATE in the debug-only manifest, so a real
         # `flutter build apk --release` otherwise ships with no network
         # access at all — this adds them to the main manifest that release
-        # actually uses.
+        # actually uses. POST_NOTIFICATIONS is required on Android 13+ for
+        # any notification (including FCM) to show at all.
         run: |
           MANIFEST=scholivax_scaffold/android/app/src/main/AndroidManifest.xml
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           cat "$MANIFEST"
 
       - name: Install dependencies
         working-directory: scholivax_scaffold
         run: flutter pub get
+
+      - name: Enable core library desugaring (required by flutter_local_notifications)
+        # flutter_local_notifications needs this turned on in the app
+        # module's build.gradle. Rather than trying to sed-insert into
+        # whatever the scaffold's existing compileOptions{}/dependencies{}
+        # blocks look like (fragile — the previous attempt at this silently
+        # failed to match and the build still failed with "requires core
+        # library desugaring to be enabled for :app"), just APPEND a second,
+        # self-contained android{} and dependencies{} block at the end of
+        # the file. Gradle (both Groovy and Kotlin DSL) merges multiple
+        # android{}/dependencies{} blocks in one file just fine — this is a
+        # completely standard pattern, not a hack — so it works regardless
+        # of how the rest of the file is structured.
+        run: |
+          GRADLE_KTS=scholivax_scaffold/android/app/build.gradle.kts
+          GRADLE_GROOVY=scholivax_scaffold/android/app/build.gradle
+          if [ -f "$GRADLE_KTS" ]; then
+            cat >> "$GRADLE_KTS" <<'EOF'
+
+android {
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+EOF
+            cat "$GRADLE_KTS"
+          elif [ -f "$GRADLE_GROOVY" ]; then
+            cat >> "$GRADLE_GROOVY" <<'EOF'
+
+android {
+    compileOptions {
+        coreLibraryDesugaringEnabled true
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+}
+EOF
+            cat "$GRADLE_GROOVY"
+          else
+            echo "No app/build.gradle(.kts) found — scaffold layout changed, needs a look."
+            exit 1
+          fi
 
       - name: Patch flutter_inappwebview's outdated proguard reference
         # flutter_inappwebview_android's own build.gradle still calls
