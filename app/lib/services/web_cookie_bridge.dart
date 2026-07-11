@@ -34,4 +34,14 @@ class WebCookieBridge {
   static Future<void> clear() async {
     await CookieManager.instance().deleteAllCookies();
   }
+
+  /// Reads back the cookies currently held for [baseUrl] as a single
+  /// "name=value; name2=value2" header string — for the rare native call
+  /// that needs to hit a website endpoint directly (not through a WebView)
+  /// but still ride on the same logged-in session, e.g. switching which
+  /// child is active, or changing a parent's password.
+  static Future<String> cookieHeaderFor(String baseUrl) async {
+    final cookies = await CookieManager.instance().getCookies(url: WebUri(baseUrl));
+    return cookies.map((c) => '${c.name}=${c.value}').join('; ');
+  }
 }

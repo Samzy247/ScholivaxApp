@@ -37,9 +37,8 @@ class RoleSelectScreen extends StatelessWidget {
             _RoleCard(
               icon: Icons.family_restroom_rounded,
               title: 'Parent',
-              subtitle: 'Coming soon',
-              enabled: false,
-              onTap: () {},
+              subtitle: 'Sign in with your Phone Number',
+              onTap: () => _goToLogin(context, 'parent'),
             ),
           ],
         ),

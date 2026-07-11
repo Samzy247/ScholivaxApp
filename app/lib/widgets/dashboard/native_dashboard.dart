@@ -57,7 +57,7 @@ class NativeDashboardState extends State<NativeDashboard> {
           child: switch (widget.session.userType) {
             'admin' => AdminDashboardBody(data: data),
             'teacher' => TeacherDashboardBody(data: data),
-            'parent' => ParentDashboardBody(data: data),
+            'parent' => ParentDashboardBody(data: data, session: widget.session, onSwitched: reload),
             _ => StudentDashboardBody(data: data),
           },
         );

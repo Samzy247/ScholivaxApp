@@ -5,6 +5,10 @@ class UserSession {
   final String? name;
   final String schoolName;
   final String subdomain;
+  // Parent-only — ignored for every other role. True right after a login
+  // that matched the fixed default password ('parent123'), until they set
+  // their own via SetNewPasswordScreen.
+  final bool mustChangePassword;
 
   UserSession({
     required this.token,
@@ -13,7 +17,18 @@ class UserSession {
     required this.name,
     required this.schoolName,
     required this.subdomain,
+    this.mustChangePassword = false,
   });
+
+  UserSession copyWith({bool? mustChangePassword}) => UserSession(
+        token: token,
+        userType: userType,
+        userId: userId,
+        name: name,
+        schoolName: schoolName,
+        subdomain: subdomain,
+        mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+      );
 
   String get baseUrl => 'https://$subdomain.scholivax.top';
 

@@ -7,10 +7,11 @@ import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
 import '../services/web_session_service.dart';
 import 'dashboard_screen.dart';
+import 'set_new_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final School school;
-  final String roleGroup; // 'staff' or 'student'
+  final String roleGroup; // 'staff', 'student', or 'parent'
 
   const LoginScreen({super.key, required this.school, required this.roleGroup});
 
@@ -26,6 +27,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _errorMessage;
 
   bool get _isStudent => widget.roleGroup == 'student';
+  bool get _isParent => widget.roleGroup == 'parent';
 
   Future<void> _submit() async {
     final identifier = _identifierController.text.trim();
@@ -44,7 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final session = await AuthService.login(
         school: widget.school,
-        role: _isStudent ? 'student' : '',
+        role: _isStudent ? 'student' : (_isParent ? 'parent' : ''),
         identifier: identifier,
         password: password,
       );
@@ -77,7 +79,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => DashboardScreen(session: session)),
+        MaterialPageRoute(
+          builder: (_) => session.mustChangePassword
+              ? SetNewPasswordScreen(session: session)
+              : DashboardScreen(session: session),
+        ),
         (route) => false,
       );
     } on NoConnectionException catch (e) {
@@ -101,17 +107,23 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              _isStudent ? 'Student Login' : 'Admin / Teacher Login',
+              _isStudent ? 'Student Login' : (_isParent ? 'Parent Login' : 'Admin / Teacher Login'),
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 24),
             TextField(
               controller: _identifierController,
-              keyboardType: _isStudent ? TextInputType.text : TextInputType.emailAddress,
+              keyboardType: _isStudent
+                  ? TextInputType.text
+                  : (_isParent ? TextInputType.phone : TextInputType.emailAddress),
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
-                labelText: _isStudent ? 'Registration Number (Reg No)' : 'Email Address',
-                prefixIcon: Icon(_isStudent ? Icons.badge_outlined : Icons.email_outlined),
+                labelText: _isStudent
+                    ? 'Registration Number (Reg No)'
+                    : (_isParent ? 'Phone Number' : 'Email Address'),
+                prefixIcon: Icon(_isStudent
+                    ? Icons.badge_outlined
+                    : (_isParent ? Icons.phone_outlined : Icons.email_outlined)),
                 border: const OutlineInputBorder(),
               ),
             ),

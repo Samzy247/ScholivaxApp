@@ -24,6 +24,7 @@ class AuthService {
       name: data['name'],
       schoolName: school.name,
       subdomain: school.subdomain,
+      mustChangePassword: data['must_change_password'] == true,
     );
   }
 
