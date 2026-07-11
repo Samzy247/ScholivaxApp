@@ -191,6 +191,7 @@ class _MarksScreenState extends State<MarksScreen> {
   }
 
   Widget _body() {
+    final locked = _sheet?['locked'] == true;
     switch (_step) {
       case _Step.subject:
         return _subjects.isEmpty
