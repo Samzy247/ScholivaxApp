@@ -12,7 +12,7 @@ class MarksScreen extends StatefulWidget {
   State<MarksScreen> createState() => _MarksScreenState();
 }
 
-enum _Step { subject, exam, roster }
+enum _Step { subject, exam, sheet }
 
 class _MarksScreenState extends State<MarksScreen> {
   _Step _step = _Step.subject;
@@ -20,10 +20,14 @@ class _MarksScreenState extends State<MarksScreen> {
   List<Map<String, dynamic>> _exams = [];
   Map<String, dynamic>? _selectedSubject;
   Map<String, dynamic>? _selectedExam;
-  List<Map<String, dynamic>> _roster = [];
+
+  Map<String, dynamic>? _sheet; // {template, fields, locked, locked_reason, students}
   int _pendingCount = 0;
   bool _loading = true;
-  final Map<int, TextEditingController> _controllers = {};
+
+  // controllers[studentId][fieldKey] -> TextEditingController
+  final Map<int, Map<String, TextEditingController>> _controllers = {};
+  final Map<int, TextEditingController> _commentControllers = {};
 
   @override
   void initState() {
@@ -33,7 +37,12 @@ class _MarksScreenState extends State<MarksScreen> {
 
   @override
   void dispose() {
-    for (final c in _controllers.values) {
+    for (final m in _controllers.values) {
+      for (final c in m.values) {
+        c.dispose();
+      }
+    }
+    for (final c in _commentControllers.values) {
       c.dispose();
     }
     super.dispose();
@@ -59,29 +68,51 @@ class _MarksScreenState extends State<MarksScreen> {
   }
 
   Future<void> _pickExam(Map<String, dynamic> exam) async {
-    setState(() { _selectedExam = exam; _loading = true; _step = _Step.roster; });
+    setState(() { _selectedExam = exam; _loading = true; _step = _Step.sheet; });
     final examId = int.parse('${exam['exam_id']}');
     final classId = _selectedSubject!['class_id'] as int;
     final subjectId = _selectedSubject!['subject_id'] as int;
 
-    final cached = await MarksService.loadCachedRoster(widget.session, examId, classId, subjectId);
-    if (mounted) { setState(() { _roster = cached; _loading = false; }); _buildControllers(); }
+    final cached = await MarksService.loadCachedSheet(widget.session, examId, classId, subjectId);
+    if (cached != null && mounted) {
+      setState(() { _sheet = cached; _loading = false; });
+      _buildControllers();
+    }
 
     try {
-      final fresh = await MarksService.refreshRoster(widget.session, examId, classId, subjectId);
-      if (mounted) { setState(() => _roster = fresh); _buildControllers(); }
-    } catch (_) {}
+      final fresh = await MarksService.refreshSheet(widget.session, examId, classId, subjectId);
+      if (mounted) {
+        setState(() { _sheet = fresh; _loading = false; });
+        _buildControllers();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
     _refreshPendingCount();
   }
 
   void _buildControllers() {
-    for (final c in _controllers.values) {
-      c.dispose();
+    for (final m in _controllers.values) {
+      for (final c in m.values) {
+        c.dispose();
+      }
     }
     _controllers.clear();
-    for (final student in _roster) {
+    for (final c in _commentControllers.values) {
+      c.dispose();
+    }
+    _commentControllers.clear();
+
+    if (_sheet == null) return;
+    final fields = (_sheet!['fields'] as List).cast<Map<String, dynamic>>();
+    final students = (_sheet!['students'] as List).cast<Map<String, dynamic>>();
+    for (final student in students) {
       final id = student['student_id'] as int;
-      _controllers[id] = TextEditingController(text: student['exam_score']?.toString() ?? '');
+      final values = (student['values'] as Map?)?.cast<String, dynamic>() ?? {};
+      _controllers[id] = {
+        for (final f in fields) f['key'] as String: TextEditingController(text: values[f['key']]?.toString() ?? ''),
+      };
+      _commentControllers[id] = TextEditingController(text: student['comment']?.toString() ?? '');
     }
   }
 
@@ -93,11 +124,12 @@ class _MarksScreenState extends State<MarksScreen> {
     if (mounted) setState(() => _pendingCount = count);
   }
 
-  Future<void> _onScoreChanged(int studentId, String score) async {
+  Future<void> _onFieldChanged(int studentId) async {
     final examId = int.parse('${_selectedExam!['exam_id']}');
     final classId = _selectedSubject!['class_id'] as int;
     final subjectId = _selectedSubject!['subject_id'] as int;
-    await MarksService.editScoreLocally(widget.session, examId, classId, subjectId, studentId, score, '');
+    final values = {for (final e in _controllers[studentId]!.entries) e.key: e.value.text};
+    await MarksService.editScoreLocally(widget.session, examId, classId, subjectId, studentId, values, _commentControllers[studentId]!.text);
     _refreshPendingCount();
   }
 
@@ -108,7 +140,7 @@ class _MarksScreenState extends State<MarksScreen> {
     final sent = await MarksService.submitPending(widget.session, examId, classId, subjectId);
     if (!mounted) return;
     if (sent > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Submitted $sent score(s).')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Submitted $sent score sheet(s).')));
       _refreshPendingCount();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -123,14 +155,14 @@ class _MarksScreenState extends State<MarksScreen> {
         return 'Scores — Pick Subject';
       case _Step.exam:
         return 'Scores — Pick Exam';
-      case _Step.roster:
+      case _Step.sheet:
         return '${_selectedSubject!['subject_name']} · ${_selectedExam!['name'] ?? _selectedExam!['title'] ?? ''}';
     }
   }
 
   void _back() {
     setState(() {
-      if (_step == _Step.roster) {
+      if (_step == _Step.sheet) {
         _step = _Step.exam;
       } else if (_step == _Step.exam) {
         _step = _Step.subject;
@@ -140,18 +172,19 @@ class _MarksScreenState extends State<MarksScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final locked = _sheet?['locked'] == true;
     return Scaffold(
       appBar: AppBar(
         title: Text(_title, overflow: TextOverflow.ellipsis),
         leading: _step == _Step.subject ? null : IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: _back),
         actions: [
-          if (_step == _Step.roster && _pendingCount > 0)
+          if (_step == _Step.sheet && _pendingCount > 0 && !locked)
             IconButton(icon: Badge(label: Text('$_pendingCount'), child: const Icon(Icons.cloud_upload_rounded)), tooltip: 'Submit scores', onPressed: _submit),
           IconButton(icon: const Icon(Icons.home_rounded), tooltip: 'Home', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
         ],
       ),
       body: _loading ? const Center(child: CircularProgressIndicator(color: AppColors.navy)) : _body(),
-      floatingActionButton: _step == _Step.roster && _pendingCount > 0
+      floatingActionButton: _step == _Step.sheet && _pendingCount > 0 && !locked
           ? FloatingActionButton.extended(onPressed: _submit, icon: const Icon(Icons.cloud_upload_rounded), label: Text('Submit ($_pendingCount)'))
           : null,
     );
@@ -187,47 +220,107 @@ class _MarksScreenState extends State<MarksScreen> {
                   onTap: () => _pickExam(_exams[i]),
                 ),
               );
-      case _Step.roster:
-        if (_roster.isEmpty) {
+      case _Step.sheet:
+        if (_sheet == null) {
+          return const Center(child: Text('Could not load this score sheet.', style: TextStyle(color: AppColors.textMuted)));
+        }
+        final fields = (_sheet!['fields'] as List).cast<Map<String, dynamic>>();
+        final students = (_sheet!['students'] as List).cast<Map<String, dynamic>>();
+        if (students.isEmpty) {
           return const Center(child: Text('No students found for this class.', style: TextStyle(color: AppColors.textMuted)));
         }
-        return ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
-          itemCount: _roster.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final student = _roster[i];
-            final id = student['student_id'] as int;
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(student['name'].toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
-                        Text('Roll: ${student['roll']}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    width: 70,
-                    child: TextField(
-                      controller: _controllers[id],
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      decoration: const InputDecoration(hintText: 'Score', isDense: true, border: OutlineInputBorder()),
-                      onChanged: (value) => _onScoreChanged(id, value),
-                    ),
-                  ),
-                ],
+        return Column(
+          children: [
+            if (locked)
+              Container(
+                width: double.infinity,
+                color: Colors.orange.withOpacity(0.12),
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_outline_rounded, size: 18, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_sheet!['locked_reason']?.toString() ?? 'These marks are locked.', style: const TextStyle(fontSize: 12.5))),
+                  ],
+                ),
               ),
-            );
-          },
+            Expanded(
+              child: ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+                itemCount: students.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) => _StudentScoreCard(
+                  student: students[i],
+                  fields: fields,
+                  controllers: _controllers[students[i]['student_id']]!,
+                  commentController: _commentControllers[students[i]['student_id']]!,
+                  readOnly: locked,
+                  onChanged: () => _onFieldChanged(students[i]['student_id'] as int),
+                ),
+              ),
+            ),
+          ],
         );
     }
+  }
+}
+
+class _StudentScoreCard extends StatelessWidget {
+  final Map<String, dynamic> student;
+  final List<Map<String, dynamic>> fields;
+  final Map<String, TextEditingController> controllers;
+  final TextEditingController commentController;
+  final bool readOnly;
+  final VoidCallback onChanged;
+
+  const _StudentScoreCard({
+    required this.student,
+    required this.fields,
+    required this.controllers,
+    required this.commentController,
+    required this.readOnly,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(student['name'].toString(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+          Text('Roll: ${student['roll']}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final field in fields)
+                SizedBox(
+                  width: 68,
+                  child: TextField(
+                    controller: controllers[field['key']],
+                    enabled: !readOnly,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    textAlign: TextAlign.center,
+                    decoration: InputDecoration(labelText: field['label'].toString(), isDense: true, border: const OutlineInputBorder()),
+                    onChanged: (_) => onChanged(),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: commentController,
+            enabled: !readOnly,
+            decoration: const InputDecoration(labelText: 'Comment (optional)', isDense: true, border: OutlineInputBorder()),
+            onChanged: (_) => onChanged(),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -61,6 +61,7 @@ jobs:
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.INTERNET"/>' "$MANIFEST"
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST"
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
+          sed -i '/<manifest /a\    <uses-permission android:name="android.permission.CAMERA"/>' "$MANIFEST"
           cat "$MANIFEST"
 
       - name: Install dependencies

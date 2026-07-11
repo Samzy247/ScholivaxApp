@@ -8,8 +8,10 @@ import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dashboard/native_dashboard.dart';
+import '../widgets/notification_bell.dart';
 import '../widgets/portal_grid.dart';
 import 'school_select_screen.dart';
+import 'offline/marks_screen.dart';
 import 'webview_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -65,6 +67,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _openItem(PortalItem item) {
+    if (item.nativeRoute == 'marks') {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => MarksScreen(session: widget.session)),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => WebViewScreen(title: item.label, path: item.path, session: widget.session),
@@ -187,6 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   tooltip: 'Refresh',
                   icon: const Icon(Icons.refresh_rounded, color: Colors.white),
                 ),
+                NotificationBell(session: session),
                 IconButton(
                   onPressed: _logout,
                   tooltip: 'Logout',
@@ -195,7 +204,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
-          if (session.userType != 'student')
+          if (session.userType == 'teacher')
             Container(
               width: double.infinity,
               color: Colors.white,

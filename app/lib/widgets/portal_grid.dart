@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
 import '../screens/offline/attendance_screen.dart';
-import '../screens/offline/circulars_screen.dart';
 import '../screens/offline/marks_screen.dart';
 import '../screens/webview_screen.dart';
 import '../theme/app_theme.dart';
@@ -95,26 +94,18 @@ class _PortalTile extends StatelessWidget {
   }
 }
 
-/// The native, offline-first tools. Circulars work offline for everyone;
-/// Attendance and Marks entry are teacher-only actions, so only teachers
-/// see those two tiles. Admin sees Circulars only for now (marking
-/// attendance/scores is a per-class-teacher action on the website).
+/// The native, offline-first tools — Attendance and Marks entry. Both are
+/// teacher-only actions (marking attendance/scoring is a per-class-teacher
+/// job on the website), so this widget is only ever shown for teachers.
+/// Circulars used to be a third tile here, but that content now surfaces
+/// through the notification bell/feed instead.
 class OfflineQuickActions extends StatelessWidget {
   final UserSession session;
 
   const OfflineQuickActions({super.key, required this.session});
 
   List<({IconData icon, String label, WidgetBuilder builder})> get _tiles {
-    final circulars = (
-      icon: Icons.campaign_outlined,
-      label: 'Circulars',
-      builder: (BuildContext _) => CircularsScreen(session: session),
-    );
-    if (session.userType != 'teacher') {
-      return [circulars];
-    }
     return [
-      circulars,
       (
         icon: Icons.qr_code_scanner_rounded,
         label: 'Attendance',

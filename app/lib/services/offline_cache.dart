@@ -24,6 +24,22 @@ class OfflineCache {
     }
   }
 
+  static Future<void> saveMap(String key, Map<String, dynamic> value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode(value));
+  }
+
+  static Future<Map<String, dynamic>?> loadMap(String key) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return (jsonDecode(raw) as Map).cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> clear(String key) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(key);

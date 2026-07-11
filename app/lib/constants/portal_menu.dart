@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 /// One tappable card on the dashboard that opens a specific page of the
-/// full website inside the in-app WebView.
+/// full website inside the in-app WebView — unless [nativeRoute] is set,
+/// in which case it opens that native offline-capable screen instead
+/// (e.g. the Marksheet item opens the native Marks entry screen so
+/// teachers can score offline instead of needing the website's page).
 class PortalItem {
   final String label;
   final IconData icon;
   final String path; // e.g. '/admin/hrm' — appended to the school baseUrl.
+  final String? nativeRoute;
 
-  const PortalItem({required this.label, required this.icon, required this.path});
+  const PortalItem({required this.label, required this.icon, required this.path, this.nativeRoute});
 }
 
 /// A named group of [PortalItem]s (rendered as a heading + card grid).
@@ -109,7 +113,7 @@ class PortalMenu {
     // subject marksheet page instead, since that one has a real view.
     PortalSection(title: 'Report Card', items: [
       PortalItem(label: 'Enter Remarks', icon: Icons.rate_review_rounded, path: '/teacher/bulk_remarks_page'),
-      PortalItem(label: 'Marksheet', icon: Icons.summarize_rounded, path: '/teacher/student_marksheet_subject'),
+      PortalItem(label: 'Marksheet', icon: Icons.summarize_rounded, path: '/teacher/student_marksheet_subject', nativeRoute: 'marks'),
     ]),
     PortalSection(title: 'Profile', items: [
       PortalItem(label: 'My Profile', icon: Icons.manage_accounts_rounded, path: '/teacher/manage_profile'),

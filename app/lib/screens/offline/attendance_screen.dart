@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../models/user_session.dart';
 import '../../services/attendance_service.dart';
@@ -16,9 +17,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   List<Map<String, dynamic>> _classes = [];
   Map<String, dynamic>? _selectedClass;
   List<Map<String, dynamic>> _roster = [];
-  Set<String> _markedToday = {};
   int _pendingCount = 0;
   bool _loading = true;
+  bool _scanMode = false;
   final String _today = DateTime.now().toIso8601String().split('T').first;
 
   @override
@@ -50,30 +51,56 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     if (synced > 0 && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Synced $synced queued attendance record(s).')));
       _refreshPendingCount();
+      if (_selectedClass != null) _reloadRoster();
     }
   }
 
   Future<void> _selectClass(Map<String, dynamic> cls) async {
     setState(() { _selectedClass = cls; _loading = true; _roster = []; });
-    final classId = cls['class_id'] as int;
+    await _reloadRoster();
+    if (mounted) setState(() => _loading = false);
+  }
 
-    final cached = await AttendanceService.loadCachedRoster(widget.session, classId);
-    final marked = await AttendanceService.loadMarkedRolls(widget.session, classId, _today);
-    if (mounted) setState(() { _roster = cached; _markedToday = marked; _loading = false; });
-
+  Future<void> _reloadRoster() async {
+    final classId = _selectedClass!['class_id'] as int;
+    final cached = await AttendanceService.loadCachedRoster(widget.session, classId, _today);
+    if (mounted) setState(() => _roster = cached);
     try {
-      final fresh = await AttendanceService.refreshRoster(widget.session, classId);
+      final fresh = await AttendanceService.refreshRoster(widget.session, classId, _today);
       if (mounted) setState(() => _roster = fresh);
     } catch (_) {
       // offline — cached roster still shown
     }
   }
 
-  Future<void> _markPresent(String roll) async {
+  Future<void> _setStatus(int studentId, int status) async {
     final classId = _selectedClass!['class_id'] as int;
-    setState(() => _markedToday = {..._markedToday, roll}); // instant feedback
-    final synced = await AttendanceService.markPresent(widget.session, classId, roll, _today);
+    setState(() {
+      final idx = _roster.indexWhere((r) => r['student_id'] == studentId);
+      if (idx != -1) _roster[idx] = {..._roster[idx], 'status': status};
+    });
+    final synced = await AttendanceService.setStatus(widget.session, classId, studentId, _today, status);
     if (!synced) _refreshPendingCount();
+  }
+
+  Future<void> _onScanned(String code) async {
+    final classId = _selectedClass!['class_id'] as int;
+    final name = await AttendanceService.markScannedPresent(widget.session, classId, _today, code, _roster);
+    if (!mounted) return;
+    if (name == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No student found for "$code" in this class.'), backgroundColor: Colors.orange),
+      );
+      return;
+    }
+    setState(() {
+      final idx = _roster.indexWhere((r) => r['roll'].toString().toLowerCase() == code.toLowerCase());
+      if (idx != -1) _roster[idx] = {..._roster[idx], 'status': AttendanceStatus.present};
+    });
+    _refreshPendingCount();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$name marked Present'), backgroundColor: Colors.green, duration: const Duration(seconds: 1)),
+    );
   }
 
   @override
@@ -93,12 +120,58 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
           IconButton(icon: const Icon(Icons.home_rounded), tooltip: 'Home', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
         ],
+        bottom: _selectedClass == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: _ModeToggle(scanMode: _scanMode, onChanged: (v) => setState(() => _scanMode = v)),
+                ),
+              ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.navy))
           : _selectedClass == null
               ? _ClassPicker(classes: _classes, onSelect: _selectClass)
-              : _RosterList(roster: _roster, markedRolls: _markedToday, onMark: _markPresent),
+              : _scanMode
+                  ? _ScanView(onScanned: _onScanned)
+                  : _RosterList(roster: _roster, onSetStatus: _setStatus),
+    );
+  }
+}
+
+class _ModeToggle extends StatelessWidget {
+  final bool scanMode;
+  final ValueChanged<bool> onChanged;
+  const _ModeToggle({required this.scanMode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        children: [
+          Expanded(child: _segment(context, 'Manual', !scanMode, () => onChanged(false))),
+          Expanded(child: _segment(context, 'Scan', scanMode, () => onChanged(true))),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment(BuildContext context, String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(color: selected ? Colors.white : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: selected ? AppColors.navy : Colors.white, fontWeight: FontWeight.w600, fontSize: 13),
+        ),
+      ),
     );
   }
 }
@@ -144,11 +217,73 @@ class _ClassPicker extends StatelessWidget {
   }
 }
 
+class _ScanView extends StatefulWidget {
+  final ValueChanged<String> onScanned;
+  const _ScanView({required this.onScanned});
+
+  @override
+  State<_ScanView> createState() => _ScanViewState();
+}
+
+class _ScanViewState extends State<_ScanView> {
+  final MobileScannerController _controller = MobileScannerController();
+  String? _lastCode;
+  DateTime? _lastScanTime;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleDetect(BarcodeCapture capture) {
+    final barcode = capture.barcodes.firstOrNull;
+    final code = barcode?.rawValue;
+    if (code == null || code.isEmpty) return;
+
+    final now = DateTime.now();
+    // Debounce: ignore the same code scanned again within 3 seconds so one
+    // student in front of the camera doesn't get marked repeatedly.
+    if (code == _lastCode && _lastScanTime != null && now.difference(_lastScanTime!) < const Duration(seconds: 3)) {
+      return;
+    }
+    _lastCode = code;
+    _lastScanTime = now;
+    widget.onScanned(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        MobileScanner(controller: _controller, onDetect: _handleDetect),
+        Positioned(
+          left: 24,
+          right: 24,
+          bottom: 32,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
+            child: const Text(
+              'Point the camera at a student ID barcode to mark them Present.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+extension _FirstOrNull<T> on List<T> {
+  T? get firstOrNull => isEmpty ? null : first;
+}
+
 class _RosterList extends StatelessWidget {
   final List<Map<String, dynamic>> roster;
-  final Set<String> markedRolls;
-  final ValueChanged<String> onMark;
-  const _RosterList({required this.roster, required this.markedRolls, required this.onMark});
+  final void Function(int studentId, int status) onSetStatus;
+  const _RosterList({required this.roster, required this.onSetStatus});
 
   @override
   Widget build(BuildContext context) {
@@ -161,21 +296,57 @@ class _RosterList extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final student = roster[index];
-        final roll = student['roll'].toString();
-        final present = markedRolls.contains(roll);
-        return Material(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          child: ListTile(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: AppColors.border)),
-            title: Text(student['name'].toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text('Roll: $roll'),
-            trailing: present
-                ? const Icon(Icons.check_circle_rounded, color: Colors.green)
-                : OutlinedButton(onPressed: () => onMark(roll), child: const Text('Mark Present')),
+        final studentId = student['student_id'] as int;
+        final status = student['status'] as int?;
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(student['name'].toString(), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text('Roll: ${student['roll']}', style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+                  ],
+                ),
+              ),
+              _StatusChip(label: 'A', color: Colors.red, selected: status == AttendanceStatus.absent, onTap: () => onSetStatus(studentId, AttendanceStatus.absent)),
+              const SizedBox(width: 6),
+              _StatusChip(label: 'H', color: Colors.orange, selected: status == AttendanceStatus.halfDay, onTap: () => onSetStatus(studentId, AttendanceStatus.halfDay)),
+              const SizedBox(width: 6),
+              _StatusChip(label: 'P', color: Colors.green, selected: status == AttendanceStatus.present, onTap: () => onSetStatus(studentId, AttendanceStatus.present)),
+            ],
           ),
         );
       },
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+  const _StatusChip({required this.label, required this.color, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 34,
+        height: 34,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? color : color.withOpacity(0.1),
+          shape: BoxShape.circle,
+          border: Border.all(color: color, width: selected ? 0 : 1),
+        ),
+        child: Text(label, style: TextStyle(color: selected ? Colors.white : color, fontWeight: FontWeight.w700, fontSize: 13)),
+      ),
     );
   }
 }

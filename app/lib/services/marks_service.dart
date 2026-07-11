@@ -31,47 +31,49 @@ class MarksService {
     return exams;
   }
 
-  // ── Roster (one row per student, with any existing score) ──────────────
-  static Future<List<Map<String, dynamic>>> loadCachedRoster(
-      UserSession session, int examId, int classId, int subjectId) =>
-      OfflineCache.loadList(_rosterKey(session, examId, classId, subjectId));
+  // ── Score sheet: field layout (varies per school's report template) +
+  //    each student's existing values ─────────────────────────────────────
+  static Future<Map<String, dynamic>?> loadCachedSheet(UserSession session, int examId, int classId, int subjectId) =>
+      OfflineCache.loadMap(_rosterKey(session, examId, classId, subjectId));
 
-  static Future<List<Map<String, dynamic>>> refreshRoster(
-      UserSession session, int examId, int classId, int subjectId) async {
+  static Future<Map<String, dynamic>> refreshSheet(UserSession session, int examId, int classId, int subjectId) async {
     final response = await ApiClient.get(
       session.baseUrl,
       '/api/marks/roster',
       query: {'exam_id': examId.toString(), 'class_id': classId.toString(), 'subject_id': subjectId.toString()},
       token: session.token,
     );
-    final students = (response['students'] as List).cast<Map<String, dynamic>>();
-    await OfflineCache.saveList(_rosterKey(session, examId, classId, subjectId), students);
-    return students;
+    await OfflineCache.saveMap(_rosterKey(session, examId, classId, subjectId), response);
+    return response;
   }
 
-  /// Updates one student's score locally (works with no connection) and
-  /// flags them as not-yet-submitted. Call [submitPending] once online.
+  /// Updates one student's field values locally (works with no connection)
+  /// and flags them as not-yet-submitted. Call [submitPending] once online.
   static Future<void> editScoreLocally(
     UserSession session,
     int examId,
     int classId,
     int subjectId,
     int studentId,
-    String examScore,
+    Map<String, String> values,
     String comment,
   ) async {
     final key = _rosterKey(session, examId, classId, subjectId);
-    final roster = await OfflineCache.loadList(key);
-    final idx = roster.indexWhere((r) => r['student_id'] == studentId);
-    if (idx != -1) {
-      roster[idx] = {...roster[idx], 'exam_score': examScore, 'comment': comment};
-      await OfflineCache.saveList(key, roster);
+    final sheet = await OfflineCache.loadMap(key);
+    if (sheet != null) {
+      final students = (sheet['students'] as List).cast<Map<String, dynamic>>();
+      final idx = students.indexWhere((s) => s['student_id'] == studentId);
+      if (idx != -1) {
+        students[idx] = {...students[idx], 'values': values, 'comment': comment};
+        sheet['students'] = students;
+        await OfflineCache.saveMap(key, sheet);
+      }
     }
 
     final dirtyKey = _dirtyKey(session, examId, classId, subjectId);
     final dirty = await OfflineCache.loadList(dirtyKey);
     final dIdx = dirty.indexWhere((r) => r['student_id'] == studentId);
-    final entry = {'student_id': studentId, 'exam_score': examScore, 'comment': comment};
+    final entry = {'student_id': studentId, 'values': values, 'comment': comment};
     if (dIdx != -1) {
       dirty[dIdx] = entry;
     } else {
@@ -118,7 +120,9 @@ class MarksService {
       if (i > 0) buffer.write(',');
       final e = entries[i];
       final comment = e['comment'].toString().replaceAll('"', '\\"');
-      buffer.write('{"student_id":${e['student_id']},"exam_score":"${e['exam_score']}","comment":"$comment"}');
+      final values = (e['values'] as Map).cast<String, String>();
+      final valuesJson = values.entries.map((kv) => '"${kv.key}":"${kv.value}"').join(',');
+      buffer.write('{"student_id":${e['student_id']},"values":{$valuesJson},"comment":"$comment"}');
     }
     buffer.write(']');
     return buffer.toString();

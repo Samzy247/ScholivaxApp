@@ -63,6 +63,29 @@ class WebSessionService {
         throw WebLoginException('Invalid login details.');
       }
 
+      // The website sets a one-time "{Name} Successfully Login" flash
+      // message on every successful login (Login_model.php), which
+      // js.php auto-pops as a SweetAlert on whatever page loads next —
+      // showing up in the app as an unexplained "welcome" modal the
+      // instant a WebView opens. CodeIgniter flashdata is read-once: the
+      // PHP view has to actually render for it to be consumed. So we
+      // silently fetch that same redirect target here, in the background,
+      // discarding the response — that consumes the flash message before
+      // the person ever sees a rendered page, and by the time the visible
+      // WebView loads the same URL a moment later, there's nothing left
+      // to pop up. Best-effort: if this fails for any reason, the only
+      // consequence is the popup still shows once, so it's not worth
+      // failing the login over.
+      try {
+        final targetUri = target.startsWith('http') ? Uri.parse(target) : Uri.parse('${school.baseUrl}$target');
+        final warmupRequest = await client.getUrl(targetUri).timeout(const Duration(seconds: 10));
+        warmupRequest.headers.set('Cookie', cookies.map((c) => '${c.name}=${c.value}').join('; '));
+        final warmupResponse = await warmupRequest.close().timeout(const Duration(seconds: 10));
+        await warmupResponse.drain();
+      } catch (_) {
+        // Non-fatal — see comment above.
+      }
+
       return cookies;
     } on io.SocketException {
       throw NoConnectionException();
