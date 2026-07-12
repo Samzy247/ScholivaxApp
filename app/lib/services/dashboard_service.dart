@@ -14,4 +14,16 @@ class DashboardService {
     );
     return (response['dashboard'] as Map).cast<String, dynamic>();
   }
+
+  /// Parent-only: the same rich per-student dashboard a student sees
+  /// logging in themselves, but for one of the parent's children.
+  static Future<Map<String, dynamic>> fetchChildSummary(UserSession session, int studentId) async {
+    final response = await ApiClient.get(
+      session.baseUrl,
+      '/api/dashboard/child_summary',
+      query: {'student_id': studentId.toString()},
+      token: session.token,
+    );
+    return (response['dashboard'] as Map).cast<String, dynamic>();
+  }
 }

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
+import '../services/dashboard_service.dart';
 import '../services/session_store.dart';
 import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
@@ -10,8 +12,10 @@ import '../theme/app_theme.dart';
 import '../widgets/dashboard/native_dashboard.dart';
 import '../widgets/notification_bell.dart';
 import '../widgets/portal_grid.dart';
+import 'chat_screen.dart';
 import 'school_select_screen.dart';
 import 'offline/marks_screen.dart';
+import 'teacher_chat_inbox_screen.dart';
 import 'webview_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -73,11 +77,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       return;
     }
+    if (item.nativeRoute == 'chat_inbox') {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => TeacherChatInboxScreen(session: widget.session)),
+      );
+      return;
+    }
+    if (item.nativeRoute == 'chat_teacher') {
+      _openChatTeacher();
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => WebViewScreen(title: item.label, path: item.path, session: widget.session),
       ),
     );
+  }
+
+  /// "Chat Teacher": one child → straight into that conversation. More
+  /// than one → a bottom sheet to pick which child first.
+  Future<void> _openChatTeacher() async {
+    List<Map> children;
+    try {
+      final summary = await DashboardService.fetchSummary(widget.session);
+      children = (summary['children'] as List).cast<Map>();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Couldn't load your children — check your connection and try again.")),
+      );
+      return;
+    }
+
+    if (children.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No children linked to your account yet.')),
+      );
+      return;
+    }
+
+    if (children.length == 1) {
+      _openChatFor(children.first);
+      return;
+    }
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ChildPickerSheet(children: children, onSelect: _openChatFor),
+    );
+  }
+
+  Future<void> _openChatFor(Map child) async {
+    try {
+      final thread = await ChatService.openThreadForChild(widget.session, child['student_id'] as int);
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatScreen(
+            session: widget.session,
+            threadId: thread['thread_id'] as int,
+            title: thread['teacher_name']?.toString() ?? 'Class Teacher',
+            initialMessages: (thread['messages'] as List).cast<Map<String, dynamic>>(),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't open chat for ${child['name']} — check your connection and try again.")),
+      );
+    }
   }
 
   /// A section with exactly one link goes straight there — a bottom sheet
@@ -113,7 +186,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'admin':
         return const ['Students', 'Staff & HR', 'Exams & CBT'];
       case 'teacher':
-        return const ['Classes', 'Exams & CBT', 'Report Card', 'Profile'];
+        return const ['Classes', 'Exams & CBT', 'Report Card', 'Messages', 'Profile'];
       case 'student':
         return const ['Academics', 'Exams', 'Classes', 'Fees & Profile'];
       case 'parent':
@@ -128,7 +201,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const _navLabelOverrides = <String, String>{
     'Exams & CBT': 'Exams',
     'Staff & HR': 'Staff',
-    'Fees & Profile': 'Fees',
+    'Fees & Profile': 'Profile',
     'Report Card': 'Report',
     'My Child': 'My Child',
   };
@@ -260,6 +333,39 @@ class _SectionSheet extends StatelessWidget {
   void _pick(BuildContext context, PortalItem item) {
     Navigator.of(context).pop();
     onSelect(item);
+  }
+}
+
+/// Bottom sheet for "Chat Teacher" when there's more than one child —
+/// picking one opens the chat with THAT child's class teacher.
+class _ChildPickerSheet extends StatelessWidget {
+  final List<Map> children;
+  final ValueChanged<Map> onSelect;
+  const _ChildPickerSheet({required this.children, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetShell(
+      title: 'Chat with which child\'s teacher?',
+      children: [
+        for (final child in children)
+          ListTile(
+            leading: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(color: AppColors.navy.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.person_outline_rounded, color: AppColors.navy),
+            ),
+            title: Text(child['name'].toString(), style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+            subtitle: Text('${child['class_name'] ?? ''}'),
+            trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+            onTap: () {
+              Navigator.of(context).pop();
+              onSelect(child);
+            },
+          ),
+      ],
+    );
   }
 }
 

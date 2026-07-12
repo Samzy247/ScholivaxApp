@@ -115,6 +115,9 @@ class PortalMenu {
       PortalItem(label: 'Enter Remarks', icon: Icons.rate_review_rounded, path: '/teacher/bulk_remarks_page'),
       PortalItem(label: 'Marksheet', icon: Icons.summarize_rounded, path: '/teacher/student_marksheet_subject', nativeRoute: 'marks'),
     ]),
+    PortalSection(title: 'Messages', items: [
+      PortalItem(label: 'Parent Messages', icon: Icons.forum_rounded, path: '', nativeRoute: 'chat_inbox'),
+    ]),
     PortalSection(title: 'Profile', items: [
       PortalItem(label: 'My Profile', icon: Icons.manage_accounts_rounded, path: '/teacher/manage_profile'),
     ]),
@@ -143,7 +146,7 @@ class PortalMenu {
 
   static const _parent = <PortalSection>[
     PortalSection(title: 'My Child', items: [
-      PortalItem(label: 'Find Child', icon: Icons.search_rounded, path: '/parents/search_student'),
+      PortalItem(label: 'Chat Teacher', icon: Icons.chat_bubble_rounded, path: '', nativeRoute: 'chat_teacher'),
       PortalItem(label: 'Class Routine', icon: Icons.schedule_rounded, path: '/parents/class_routine'),
       PortalItem(label: 'Classmates', icon: Icons.groups_rounded, path: '/parents/class_mate'),
       PortalItem(label: 'Subjects', icon: Icons.menu_book_rounded, path: '/parents/subject'),
