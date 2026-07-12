@@ -11,6 +11,7 @@ import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dashboard/native_dashboard.dart';
+import '../widgets/chat_badge_icon.dart';
 import '../widgets/notification_bell.dart';
 import '../widgets/portal_grid.dart';
 import 'chat_screen.dart';
@@ -196,7 +197,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'student':
         return const ['Academics', 'Exams', 'Classes', 'Fees & Profile'];
       case 'parent':
-        return const ['Chat Teacher', 'Academics', 'Profile'];
+        return const ['Chat Teacher', 'Profile'];
       default:
         return const [];
     }
@@ -243,6 +244,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           icon: _sections.firstWhere((s) => s.title == title).items.first.icon,
           label: _navLabel(title),
           onTap: () => _openSection(_sections.firstWhere((s) => s.title == title)),
+          iconWidget: (title == 'Chat Teacher' || title == 'Messages')
+              ? ChatBadgeIcon(session: session, icon: _sections.firstWhere((s) => s.title == title).items.first.icon)
+              : null,
         ),
       if (leftoverSections.isNotEmpty)
         _NavEntry(
@@ -268,11 +272,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     '${_roleLabel(session.userType)} Dashboard',
                     style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700),
                   ),
-                ),
-                IconButton(
-                  onPressed: () => _dashboardKey.currentState?.reload(),
-                  tooltip: 'Refresh',
-                  icon: const Icon(Icons.refresh_rounded, color: Colors.white),
                 ),
                 NotificationBell(session: session),
                 IconButton(
@@ -305,7 +304,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onTap: (index) => navItems[index].onTap(),
               items: [
                 for (final item in navItems)
-                  BottomNavigationBarItem(icon: Icon(item.icon), label: item.label),
+                  BottomNavigationBarItem(icon: item.iconWidget ?? Icon(item.icon), label: item.label),
               ],
             )
           : null,
@@ -317,7 +316,8 @@ class _NavEntry {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  _NavEntry({required this.icon, required this.label, required this.onTap});
+  final Widget? iconWidget;
+  _NavEntry({required this.icon, required this.label, required this.onTap, this.iconWidget});
 }
 
 /// Bottom sheet listing every link inside a single [PortalSection].

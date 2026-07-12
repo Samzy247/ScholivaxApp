@@ -47,4 +47,14 @@ class ChatService {
     final response = await ApiClient.get(session.baseUrl, '/api/chat/inbox', token: session.token);
     return (response['threads'] as List).cast<Map<String, dynamic>>();
   }
+
+  /// Both roles — powers the badge on the Chat nav icon.
+  static Future<int> unreadCount(UserSession session) async {
+    try {
+      final response = await ApiClient.get(session.baseUrl, '/api/chat/unread_count', token: session.token);
+      return int.tryParse('${response['unread_count']}') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
 }

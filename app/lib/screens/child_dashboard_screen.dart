@@ -48,9 +48,8 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
   String? _error;
   Future<void>? _switchFuture;
 
-  late final List<PortalSection> _parentSections = PortalMenu.forRole('parent');
-  PortalSection get _academics => _parentSections.firstWhere((s) => s.title == 'Academics');
-  PortalSection get _fees => _parentSections.firstWhere((s) => s.title == 'Fees');
+  PortalSection get _academics => PortalMenu.childPortalSections.firstWhere((s) => s.title == 'Academics');
+  PortalSection get _fees => PortalMenu.childPortalSections.firstWhere((s) => s.title == 'Fees');
 
   @override
   void initState() {

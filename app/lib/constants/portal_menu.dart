@@ -148,14 +148,19 @@ class PortalMenu {
     PortalSection(title: 'Chat Teacher', items: [
       PortalItem(label: 'Chat Teacher', icon: Icons.chat_bubble_rounded, path: '', nativeRoute: 'chat_teacher'),
     ]),
-    PortalSection(title: 'Academics', items: [
-      PortalItem(label: 'Class Routine', icon: Icons.schedule_rounded, path: '/parents/class_routine'),
-      PortalItem(label: 'Classmates', icon: Icons.groups_rounded, path: '/parents/class_mate'),
-      PortalItem(label: 'Subjects', icon: Icons.menu_book_rounded, path: '/parents/subject'),
-      PortalItem(label: 'Teachers', icon: Icons.school_rounded, path: '/parents/teacher'),
-    ]),
     PortalSection(title: 'Profile', items: [
       PortalItem(label: 'My Profile', icon: Icons.manage_accounts_rounded, path: '/parents/manage_profile'),
+    ]),
+  ];
+
+  /// Used only by the child-dashboard screen (opened by tapping a child's
+  /// name) — NOT part of the main parent dashboard's own nav, since that
+  /// now only has Home/Chat/Profile. This is the "logged into that
+  /// child's own portal" experience: academics + fees for that one child.
+  static const childPortalSections = <PortalSection>[
+    PortalSection(title: 'Academics', items: [
+      PortalItem(label: 'Class Routine', icon: Icons.schedule_rounded, path: '/parents/class_routine'),
+      PortalItem(label: 'Subjects', icon: Icons.menu_book_rounded, path: '/parents/subject'),
     ]),
     PortalSection(title: 'Fees', items: [
       PortalItem(label: 'Invoice', icon: Icons.receipt_long_rounded, path: '/parents/invoice'),

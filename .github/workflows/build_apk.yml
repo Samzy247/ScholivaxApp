@@ -31,6 +31,8 @@ jobs:
           cp app/pubspec.yaml scholivax_scaffold/pubspec.yaml
           rm -rf scholivax_scaffold/lib
           cp -r app/lib scholivax_scaffold/lib
+          rm -rf scholivax_scaffold/assets
+          cp -r app/assets scholivax_scaffold/assets
 
       - name: Set applicationId to match the Firebase app registration
         # firebase_options.dart's config was generated for the Android app
@@ -62,11 +64,16 @@ jobs:
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' "$MANIFEST"
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>' "$MANIFEST"
           sed -i '/<manifest /a\    <uses-permission android:name="android.permission.CAMERA"/>' "$MANIFEST"
+          sed -i -E 's/android:label="[^"]*"/android:label="Scholivax"/' "$MANIFEST"
           cat "$MANIFEST"
 
       - name: Install dependencies
         working-directory: scholivax_scaffold
         run: flutter pub get
+
+      - name: Generate the app icon from our logo
+        working-directory: scholivax_scaffold
+        run: dart run flutter_launcher_icons
 
       - name: Enable core library desugaring (required by flutter_local_notifications)
         # flutter_local_notifications needs this turned on in the app
