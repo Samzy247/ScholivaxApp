@@ -145,17 +145,21 @@ class PortalMenu {
   ];
 
   static const _parent = <PortalSection>[
-    PortalSection(title: 'My Child', items: [
+    PortalSection(title: 'Chat Teacher', items: [
       PortalItem(label: 'Chat Teacher', icon: Icons.chat_bubble_rounded, path: '', nativeRoute: 'chat_teacher'),
+    ]),
+    PortalSection(title: 'Academics', items: [
       PortalItem(label: 'Class Routine', icon: Icons.schedule_rounded, path: '/parents/class_routine'),
       PortalItem(label: 'Classmates', icon: Icons.groups_rounded, path: '/parents/class_mate'),
       PortalItem(label: 'Subjects', icon: Icons.menu_book_rounded, path: '/parents/subject'),
       PortalItem(label: 'Teachers', icon: Icons.school_rounded, path: '/parents/teacher'),
     ]),
-    PortalSection(title: 'Fees & Profile', items: [
+    PortalSection(title: 'Profile', items: [
+      PortalItem(label: 'My Profile', icon: Icons.manage_accounts_rounded, path: '/parents/manage_profile'),
+    ]),
+    PortalSection(title: 'Fees', items: [
       PortalItem(label: 'Invoice', icon: Icons.receipt_long_rounded, path: '/parents/invoice'),
       PortalItem(label: 'Payment History', icon: Icons.history_rounded, path: '/parents/payment_history'),
-      PortalItem(label: 'My Profile', icon: Icons.manage_accounts_rounded, path: '/parents/manage_profile'),
     ]),
   ];
 }

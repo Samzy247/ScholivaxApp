@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
 import '../services/auth_service.dart';
+import '../services/api_client.dart';
 import '../services/chat_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/session_store.dart';
@@ -145,6 +146,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
       );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Couldn't open chat for ${child['name']}: ${e.message}")),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -190,7 +196,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'student':
         return const ['Academics', 'Exams', 'Classes', 'Fees & Profile'];
       case 'parent':
-        return const ['My Child', 'Fees & Profile'];
+        return const ['Chat Teacher', 'Academics', 'Profile'];
       default:
         return const [];
     }
@@ -203,7 +209,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'Staff & HR': 'Staff',
     'Fees & Profile': 'Profile',
     'Report Card': 'Report',
-    'My Child': 'My Child',
+    'Chat Teacher': 'Chat',
   };
 
   String _navLabel(String title) => _navLabelOverrides[title] ?? title.split(' ').first;

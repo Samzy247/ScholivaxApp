@@ -1,17 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../constants/portal_menu.dart';
 import '../models/user_session.dart';
-import '../services/dashboard_service.dart';
+import '../services/api_client.dart';
 import '../services/chat_service.dart';
+import '../services/dashboard_service.dart';
+import '../services/parent_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dashboard/dashboard_widgets.dart';
 import 'chat_screen.dart';
+import 'webview_screen.dart';
 
-/// Shows one child's academics — attendance, average/grade, subject
-/// scores, fees — with a switcher up top when there's more than one
-/// child, so flipping between siblings is just re-fetching data on this
-/// same screen instead of the old (broken) approach of mutating the
-/// website's PHP session and hoping the native dashboard reflected it.
+/// Fixes the broken child-switch flow AND gives it the full-portal feel
+/// that was missing before: this is now a self-contained mini dashboard
+/// with its own bottom nav (Academics / Fees / Chat), the same
+/// bottom-sheet pattern as the main dashboard — as close to "logging into
+/// that child's own student portal" as the website's session-scoped
+/// pages allow.
+///
+/// The native stats (attendance/average/subjects/fees) come from the
+/// token API and are always correct regardless of session state. The
+/// Academics/Fees WebView pages, though, are the website's own
+/// `/parents/...` pages, which read whichever child the PHP session is
+/// currently pointed at — so switching child here re-runs
+/// `ParentService.switchChild()` first, then those pages show the right
+/// child's data once opened.
 class ChildDashboardScreen extends StatefulWidget {
   final UserSession session;
   final List<Map> children;
@@ -33,11 +46,23 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
   Map<String, dynamic>? _data;
   bool _loading = true;
   String? _error;
+  Future<void>? _switchFuture;
+
+  late final List<PortalSection> _parentSections = PortalMenu.forRole('parent');
+  PortalSection get _academics => _parentSections.firstWhere((s) => s.title == 'Academics');
+  PortalSection get _fees => _parentSections.firstWhere((s) => s.title == 'Fees');
 
   @override
   void initState() {
     super.initState();
     _studentId = widget.initialStudentId;
+    _switchAndLoad();
+  }
+
+  void _switchAndLoad() {
+    // Fired in parallel, not blocking the native stats from showing —
+    // but awaited before any WebView link opens (see _openWebPath).
+    _switchFuture = ParentService.switchChild(widget.session, _studentId);
     _load();
   }
 
@@ -46,6 +71,8 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
     try {
       final data = await DashboardService.fetchChildSummary(widget.session, _studentId);
       if (mounted) setState(() { _data = data; _loading = false; });
+    } on ApiException catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.message; });
     } catch (_) {
       if (mounted) setState(() {
         _loading = false;
@@ -57,7 +84,37 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
   void _switchTo(int studentId) {
     if (studentId == _studentId) return;
     setState(() => _studentId = studentId);
-    _load();
+    _switchAndLoad();
+  }
+
+  Future<void> _openWebPath(PortalItem item) async {
+    // Make sure the website session is actually pointed at this child
+    // before opening one of its pages — otherwise it could briefly (or,
+    // if the switch failed, permanently) show a sibling's data instead.
+    if (_switchFuture != null) {
+      try {
+        await _switchFuture;
+      } catch (_) {
+        // best-effort — see ParentService.switchChild's own doc comment
+      }
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => WebViewScreen(title: item.label, path: item.path, session: widget.session)),
+    );
+  }
+
+  void _openSection(PortalSection section) {
+    if (section.items.length == 1) {
+      _openWebPath(section.items.first);
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ChildSectionSheet(section: section, onSelect: _openWebPath),
+    );
   }
 
   Future<void> _messageTeacher() async {
@@ -74,6 +131,9 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
           ),
         ),
       );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Couldn't open chat: ${e.message}")));
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,7 +150,7 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
       appBar: AppBar(
         title: Text(_data?['name']?.toString() ?? 'Child Dashboard'),
         actions: [
-          IconButton(icon: const Icon(Icons.home_rounded), tooltip: 'Home', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
+          IconButton(icon: const Icon(Icons.home_rounded), tooltip: 'Back to my dashboard', onPressed: () => Navigator.of(context).popUntil((r) => r.isFirst)),
         ],
       ),
       body: Column(
@@ -124,6 +184,32 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                     ? DashboardErrorView(message: _error!, onRetry: _load)
                     : RefreshIndicator(onRefresh: _load, child: _body(accent)),
           ),
+        ],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 0,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: accent,
+        unselectedItemColor: Colors.grey,
+        showUnselectedLabels: true,
+        onTap: (index) {
+          switch (index) {
+            case 1:
+              _openSection(_academics);
+              break;
+            case 2:
+              _openSection(_fees);
+              break;
+            case 3:
+              _messageTeacher();
+              break;
+          }
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.menu_book_rounded), label: 'Academics'),
+          BottomNavigationBarItem(icon: Icon(Icons.payments_rounded), label: 'Fees'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_rounded), label: 'Chat'),
         ],
       ),
     );
@@ -191,6 +277,57 @@ class _ChildDashboardScreenState extends State<ChildDashboardScreen> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// Same bottom-sheet look as the main dashboard's section sheets, just
+/// scoped to this child-dashboard screen's own onSelect callback.
+class _ChildSectionSheet extends StatelessWidget {
+  final PortalSection section;
+  final ValueChanged<PortalItem> onSelect;
+  const _ChildSectionSheet({required this.section, required this.onSelect});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24))),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 10, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4)),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+            child: Text(section.title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(height: 4),
+          for (final item in section.items)
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(color: AppColors.navy.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+                child: Icon(item.icon, color: AppColors.navy, size: 20),
+              ),
+              title: Text(item.label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+              trailing: const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+              onTap: () {
+                Navigator.of(context).pop();
+                onSelect(item);
+              },
+            ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 12),
+        ],
+      ),
     );
   }
 }
