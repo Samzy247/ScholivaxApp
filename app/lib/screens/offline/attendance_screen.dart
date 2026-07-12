@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../models/user_session.dart';
 import '../../services/attendance_service.dart';
@@ -230,6 +231,25 @@ class _ScanViewState extends State<_ScanView> {
   String? _lastCode;
   DateTime? _lastScanTime;
 
+  // null = still checking, true = granted, false = denied
+  bool? _hasPermission;
+  bool _permanentlyDenied = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkPermission();
+  }
+
+  Future<void> _checkPermission() async {
+    final status = await Permission.camera.request();
+    if (!mounted) return;
+    setState(() {
+      _hasPermission = status.isGranted;
+      _permanentlyDenied = status.isPermanentlyDenied;
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -254,9 +274,24 @@ class _ScanViewState extends State<_ScanView> {
 
   @override
   Widget build(BuildContext context) {
+    if (_hasPermission == null) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+
+    if (_hasPermission == false) {
+      return _PermissionMessage(
+        permanentlyDenied: _permanentlyDenied,
+        onRetry: _checkPermission,
+      );
+    }
+
     return Stack(
       children: [
-        MobileScanner(controller: _controller, onDetect: _handleDetect),
+        MobileScanner(
+          controller: _controller,
+          onDetect: _handleDetect,
+          errorBuilder: (context, error, child) => _CameraErrorMessage(error: error),
+        ),
         Positioned(
           left: 24,
           right: 24,
@@ -272,6 +307,68 @@ class _ScanViewState extends State<_ScanView> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PermissionMessage extends StatelessWidget {
+  final bool permanentlyDenied;
+  final VoidCallback onRetry;
+  const _PermissionMessage({required this.permanentlyDenied, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.camera_alt_outlined, color: Colors.white70, size: 48),
+            const SizedBox(height: 16),
+            Text(
+              permanentlyDenied
+                  ? 'Camera permission is turned off for Scholivax. Open Settings to allow it, then come back here.'
+                  : 'Scholivax needs camera access to scan student ID barcodes.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 14.5),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: permanentlyDenied ? openAppSettings : onRetry,
+              child: Text(permanentlyDenied ? 'Open Settings' : 'Grant Camera Access'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CameraErrorMessage extends StatelessWidget {
+  final MobileScannerException error;
+  const _CameraErrorMessage({required this.error});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.all(24),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded, color: Colors.white70, size: 48),
+            const SizedBox(height: 16),
+            Text(
+              'Couldn\'t start the camera (${error.errorCode.name}). Try Manual instead, or restart the app.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 14.5),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

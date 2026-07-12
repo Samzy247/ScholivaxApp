@@ -98,6 +98,8 @@ class PortalMenu {
     PortalSection(title: 'Classes', items: [
       PortalItem(label: 'Live Class', icon: Icons.videocam_rounded, path: '/teacher/live_class'),
       PortalItem(label: 'Video Lessons', icon: Icons.ondemand_video_rounded, path: '/teacher/video_class'),
+      PortalItem(label: 'Assignment', icon: Icons.assignment_rounded, path: '/assignment/assignment'),
+      PortalItem(label: 'Study Materials', icon: Icons.folder_copy_rounded, path: '/studymaterial/study_material'),
     ]),
     PortalSection(title: 'Exams & CBT', items: [
       PortalItem(label: 'CBT Exams', icon: Icons.laptop_chromebook_rounded, path: '/teacher/cbt_exam'),

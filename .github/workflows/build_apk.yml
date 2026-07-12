@@ -112,12 +112,25 @@ jobs:
           find "$PUB_CACHE_DIR/hosted" -path "*flutter_inappwebview_android*/android/build.gradle" -print -exec \
             sed -i "s/getDefaultProguardFile('proguard-android.txt')/getDefaultProguardFile('proguard-android-optimize.txt')/g" {} \;
 
-      - name: Build release APK
+      - name: Build release APK (split per ABI — smaller downloads)
+        # A single "universal" APK bundles native libraries for every
+        # CPU architecture (arm64-v8a, armeabi-v7a, x86_64) in one file,
+        # which is most of where the size goes for an app using
+        # flutter_inappwebview/firebase_messaging/mobile_scanner. This
+        # doesn't touch any code — it's the same app, just packaged as
+        # one APK per architecture instead of all three bundled together,
+        # so a real device only downloads the one it actually needs.
         working-directory: scholivax_scaffold
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
 
-      - name: Upload APK
+      - name: Upload APK (arm64-v8a — use this one; virtually all phones from the last ~6 years are this)
         uses: actions/upload-artifact@v4
         with:
-          name: scholivax-app-release
-          path: scholivax_scaffold/build/app/outputs/flutter-apk/app-release.apk
+          name: scholivax-app-arm64
+          path: scholivax_scaffold/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+
+      - name: Upload APK (armeabi-v7a — only for very old/32-bit devices)
+        uses: actions/upload-artifact@v4
+        with:
+          name: scholivax-app-armv7
+          path: scholivax_scaffold/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk

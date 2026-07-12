@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../constants/portal_menu.dart';
+import '../main.dart';
 import '../models/user_session.dart';
 import '../services/auth_service.dart';
 import '../services/api_client.dart';
 import '../services/chat_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/session_store.dart';
-import '../services/notification_service.dart';
 import '../services/web_cookie_bridge.dart';
 import '../theme/app_theme.dart';
 import '../widgets/dashboard/native_dashboard.dart';
@@ -28,14 +28,36 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
   final _dashboardKey = GlobalKey<NativeDashboardState>();
+  final _chatBadgeKey = GlobalKey<ChatBadgeIconState>();
   late final List<PortalSection> _sections;
 
   @override
   void initState() {
     super.initState();
     _sections = PortalMenu.forRole(widget.session.userType);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context) as PageRoute);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    super.dispose();
+  }
+
+  @override
+  void didPopNext() {
+    // Fires whenever a screen pushed on top of the dashboard (chat,
+    // child dashboard, anything) is popped and this becomes visible
+    // again — covers every path back here, not just the ones that
+    // happen to chain a manual refresh call.
+    _chatBadgeKey.currentState?.refresh();
   }
 
   Future<void> _logout() async {
@@ -60,9 +82,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (confirmed != true) return;
 
     await AuthService.logout(widget.session);
-    try {
-      await NotificationService.unregister(widget.session);
-    } catch (_) {}
+    // Deliberately NOT unregistering the device's push token here — the
+    // person wants notifications to keep arriving even after logging out
+    // of the app itself, so the token stays registered until they log
+    // into a different account on this device (which re-registers it
+    // for the new account) or the FCM token naturally rotates.
     await SessionStore.clear();
     await WebCookieBridge.clear();
     if (!mounted) return;
@@ -82,7 +106,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (item.nativeRoute == 'chat_inbox') {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TeacherChatInboxScreen(session: widget.session)),
-      );
+      ).then((_) => _chatBadgeKey.currentState?.refresh());
       return;
     }
     if (item.nativeRoute == 'chat_teacher') {
@@ -146,7 +170,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             initialMessages: (thread['messages'] as List).cast<Map<String, dynamic>>(),
           ),
         ),
-      );
+      ).then((_) => _chatBadgeKey.currentState?.refresh());
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,7 +269,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           label: _navLabel(title),
           onTap: () => _openSection(_sections.firstWhere((s) => s.title == title)),
           iconWidget: (title == 'Chat Teacher' || title == 'Messages')
-              ? ChatBadgeIcon(session: session, icon: _sections.firstWhere((s) => s.title == title).items.first.icon)
+              ? ChatBadgeIcon(key: _chatBadgeKey, session: session, icon: _sections.firstWhere((s) => s.title == title).items.first.icon)
               : null,
         ),
       if (leftoverSections.isNotEmpty)

@@ -5,6 +5,12 @@ import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'services/notification_service.dart';
 
+/// Lets any screen react when a route pushed on top of it gets popped —
+/// used by the dashboard to refresh the chat unread badge the moment the
+/// person comes back from any chat screen, regardless of which nav path
+/// got them there.
+final routeObserver = RouteObserver<PageRoute>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -31,6 +37,7 @@ class ScholivaxApp extends StatelessWidget {
     return MaterialApp(
       title: 'Scholivax',
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [routeObserver],
       theme: ThemeData(
         useMaterial3: true,
         colorSchemeSeed: const Color(0xFF1A2E45),

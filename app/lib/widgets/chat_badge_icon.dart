@@ -9,10 +9,10 @@ class ChatBadgeIcon extends StatefulWidget {
   const ChatBadgeIcon({super.key, required this.session, required this.icon});
 
   @override
-  State<ChatBadgeIcon> createState() => _ChatBadgeIconState();
+  State<ChatBadgeIcon> createState() => ChatBadgeIconState();
 }
 
-class _ChatBadgeIconState extends State<ChatBadgeIcon> with WidgetsBindingObserver {
+class ChatBadgeIconState extends State<ChatBadgeIcon> with WidgetsBindingObserver {
   int _unread = 0;
 
   @override
@@ -32,6 +32,12 @@ class _ChatBadgeIconState extends State<ChatBadgeIcon> with WidgetsBindingObserv
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _poll();
   }
+
+  /// Called by the dashboard right after returning from any chat screen,
+  /// since opening/reading messages there doesn't rebuild this widget on
+  /// its own — the badge would otherwise only clear on the next app
+  /// resume-from-background instead of immediately.
+  Future<void> refresh() => _poll();
 
   Future<void> _poll() async {
     final count = await ChatService.unreadCount(widget.session);
