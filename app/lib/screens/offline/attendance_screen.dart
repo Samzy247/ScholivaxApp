@@ -79,14 +79,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final idx = _roster.indexWhere((r) => r['student_id'] == studentId);
       if (idx != -1) _roster[idx] = {..._roster[idx], 'status': status};
     });
-    final synced = await AttendanceService.setStatus(widget.session, classId, studentId, _today, status);
+    final (synced, errorMessage) = await AttendanceService.setStatus(widget.session, classId, studentId, _today, status);
     if (!mounted) return;
     if (!synced) {
       _refreshPendingCount();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Couldn't reach the server — queued, will save once you're back online."),
+        SnackBar(
+          content: Text(errorMessage != null
+              ? 'Server rejected the save: $errorMessage'
+              : "Couldn't reach the server — queued, will save once you're back online."),
           backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
         ),
       );
     } else {

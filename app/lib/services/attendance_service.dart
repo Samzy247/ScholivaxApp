@@ -81,7 +81,12 @@ class AttendanceService {
   /// the server immediately; if that fails (offline, timeout) the change
   /// is queued locally instead — [syncPending] flushes the queue later.
   /// Either way the local roster cache is updated instantly.
-  static Future<bool> setStatus(UserSession session, int classId, int studentId, String date, int status) async {
+  /// Returns (synced, errorMessage). errorMessage is null when synced is
+  /// true, or when it's null AND synced is false it means "genuinely no
+  /// connection" (NoConnectionException) — a non-null message means the
+  /// server was reached but rejected the request, which is the case worth
+  /// paying attention to (a bug, not just being offline).
+  static Future<(bool, String?)> setStatus(UserSession session, int classId, int studentId, String date, int status) async {
     await _updateCachedStatus(session, classId, date, studentId, status);
     try {
       await ApiClient.post(
@@ -90,10 +95,13 @@ class AttendanceService {
         {'student_id': studentId.toString(), 'date': date, 'status': status.toString()},
         token: session.token,
       );
-      return true;
+      return (true, null);
+    } on ApiException catch (e) {
+      await _queuePending(session, studentId, date, status);
+      return (false, e.message);
     } catch (_) {
       await _queuePending(session, studentId, date, status);
-      return false;
+      return (false, null);
     }
   }
 

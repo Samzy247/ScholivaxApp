@@ -28,7 +28,27 @@ class MarksService {
     final response = await ApiClient.get(session.baseUrl, '/api/marks/exams', token: session.token);
     final exams = (response['exams'] as List).cast<Map<String, dynamic>>();
     await OfflineCache.saveList(_examsKey(session), exams);
+    await OfflineCache.saveMap(_currentExamKey(session), {'current_exam_id': response['current_exam_id']});
     return exams;
+  }
+
+  static String _currentExamKey(UserSession s) => 'marks_current_exam:${s.subdomain}';
+
+  /// The one exam matching the school's current term/session (see
+  /// Marks::exams() on the backend) — this is what lets the app skip
+  /// straight from "pick a subject" to the score sheet, no manual
+  /// "choose an exam" step. Tries the network first (freshest term/session
+  /// config), falls back to whatever was last cached if offline. Returns
+  /// null if no exam exists yet for the current term/session.
+  static Future<int?> resolveCurrentExamId(UserSession session) async {
+    try {
+      await refreshExams(session);
+    } catch (_) {
+      // offline — fall back to cache below
+    }
+    final cached = await OfflineCache.loadMap(_currentExamKey(session));
+    final id = cached?['current_exam_id'];
+    return id == null ? null : int.tryParse(id.toString());
   }
 
   // ── Score sheet: field layout (varies per school's report template) +

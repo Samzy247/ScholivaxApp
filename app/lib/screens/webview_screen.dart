@@ -104,6 +104,17 @@ class _WebViewScreenState extends State<WebViewScreen> {
                     domStorageEnabled: true,
                   ),
                   onWebViewCreated: (controller) => _controller = controller,
+                  onPermissionRequest: (controller, request) async {
+                    // Needed for pages like /teacher/attendance_scan, which
+                    // use the browser's own camera access (getUserMedia) for
+                    // barcode scanning. Without this, flutter_inappwebview
+                    // denies every permission request by default, which is
+                    // exactly the "Permission denied" error this fixes.
+                    return PermissionResponse(
+                      resources: request.resources,
+                      action: PermissionResponseAction.GRANT,
+                    );
+                  },
                   onProgressChanged: (controller, progress) {
                     setState(() => _progress = progress / 100);
                   },

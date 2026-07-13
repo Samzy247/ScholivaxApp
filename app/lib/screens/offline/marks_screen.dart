@@ -12,14 +12,14 @@ class MarksScreen extends StatefulWidget {
   State<MarksScreen> createState() => _MarksScreenState();
 }
 
-enum _Step { subject, exam, sheet }
+enum _Step { subject, sheet }
 
 class _MarksScreenState extends State<MarksScreen> {
   _Step _step = _Step.subject;
   List<Map<String, dynamic>> _subjects = [];
-  List<Map<String, dynamic>> _exams = [];
   Map<String, dynamic>? _selectedSubject;
   Map<String, dynamic>? _selectedExam;
+  bool _noCurrentExam = false;
 
   Map<String, dynamic>? _sheet; // {template, fields, locked, locked_reason, students}
   int _pendingCount = 0;
@@ -27,7 +27,6 @@ class _MarksScreenState extends State<MarksScreen> {
 
   // controllers[studentId][fieldKey] -> TextEditingController
   final Map<int, Map<String, TextEditingController>> _controllers = {};
-  final Map<int, TextEditingController> _commentControllers = {};
 
   @override
   void initState() {
@@ -42,9 +41,6 @@ class _MarksScreenState extends State<MarksScreen> {
         c.dispose();
       }
     }
-    for (final c in _commentControllers.values) {
-      c.dispose();
-    }
     super.dispose();
   }
 
@@ -58,16 +54,20 @@ class _MarksScreenState extends State<MarksScreen> {
   }
 
   Future<void> _pickSubject(Map<String, dynamic> subject) async {
-    setState(() { _selectedSubject = subject; _loading = true; _step = _Step.exam; });
-    final cached = await MarksService.loadCachedExams(widget.session);
-    if (mounted) setState(() { _exams = cached; _loading = false; });
-    try {
-      final fresh = await MarksService.refreshExams(widget.session);
-      if (mounted) setState(() => _exams = fresh);
-    } catch (_) {}
+    setState(() { _selectedSubject = subject; _loading = true; _noCurrentExam = false; });
+
+    final examId = await MarksService.resolveCurrentExamId(widget.session);
+    if (examId == null) {
+      if (mounted) setState(() { _loading = false; _noCurrentExam = true; });
+      return;
+    }
+
+    final exams = await MarksService.loadCachedExams(widget.session);
+    final examRow = exams.firstWhere((e) => int.tryParse('${e['exam_id']}') == examId, orElse: () => {'exam_id': examId});
+    await _loadSheetForExam(examRow);
   }
 
-  Future<void> _pickExam(Map<String, dynamic> exam) async {
+  Future<void> _loadSheetForExam(Map<String, dynamic> exam) async {
     setState(() { _selectedExam = exam; _loading = true; _step = _Step.sheet; });
     final examId = int.parse('${exam['exam_id']}');
     final classId = _selectedSubject!['class_id'] as int;
@@ -98,10 +98,6 @@ class _MarksScreenState extends State<MarksScreen> {
       }
     }
     _controllers.clear();
-    for (final c in _commentControllers.values) {
-      c.dispose();
-    }
-    _commentControllers.clear();
 
     if (_sheet == null) return;
     final fields = (_sheet!['fields'] as List).cast<Map<String, dynamic>>();
@@ -112,7 +108,6 @@ class _MarksScreenState extends State<MarksScreen> {
       _controllers[id] = {
         for (final f in fields) f['key'] as String: TextEditingController(text: values[f['key']]?.toString() ?? ''),
       };
-      _commentControllers[id] = TextEditingController(text: student['comment']?.toString() ?? '');
     }
   }
 
@@ -129,7 +124,7 @@ class _MarksScreenState extends State<MarksScreen> {
     final classId = _selectedSubject!['class_id'] as int;
     final subjectId = _selectedSubject!['subject_id'] as int;
     final values = {for (final e in _controllers[studentId]!.entries) e.key: e.value.text};
-    await MarksService.editScoreLocally(widget.session, examId, classId, subjectId, studentId, values, _commentControllers[studentId]!.text);
+    await MarksService.editScoreLocally(widget.session, examId, classId, subjectId, studentId, values, '');
     _refreshPendingCount();
   }
 
@@ -153,8 +148,6 @@ class _MarksScreenState extends State<MarksScreen> {
     switch (_step) {
       case _Step.subject:
         return 'Scores — Pick Subject';
-      case _Step.exam:
-        return 'Scores — Pick Exam';
       case _Step.sheet:
         return '${_selectedSubject!['subject_name']} · ${_selectedExam!['name'] ?? _selectedExam!['title'] ?? ''}';
     }
@@ -163,8 +156,6 @@ class _MarksScreenState extends State<MarksScreen> {
   void _back() {
     setState(() {
       if (_step == _Step.sheet) {
-        _step = _Step.exam;
-      } else if (_step == _Step.exam) {
         _step = _Step.subject;
       }
     });
@@ -194,6 +185,27 @@ class _MarksScreenState extends State<MarksScreen> {
     final locked = _sheet?['locked'] == true;
     switch (_step) {
       case _Step.subject:
+        if (_noCurrentExam) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.fact_check_outlined, size: 48, color: AppColors.textMuted),
+                  const SizedBox(height: 12),
+                  const Text(
+                    "No exam found for the current term/session.\nAsk an admin to create one on the website first.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: AppColors.textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  TextButton(onPressed: () => setState(() => _noCurrentExam = false), child: const Text('Back to subjects')),
+                ],
+              ),
+            ),
+          );
+        }
         return _subjects.isEmpty
             ? const Center(child: Text('No subjects assigned to you yet.', style: TextStyle(color: AppColors.textMuted)))
             : ListView.separated(
@@ -205,20 +217,6 @@ class _MarksScreenState extends State<MarksScreen> {
                   title: _subjects[i]['subject_name'].toString(),
                   subtitle: _subjects[i]['class_name'].toString(),
                   onTap: () => _pickSubject(_subjects[i]),
-                ),
-              );
-      case _Step.exam:
-        return _exams.isEmpty
-            ? const Center(child: Text('No exams found.', style: TextStyle(color: AppColors.textMuted)))
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: _exams.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, i) => _PickerTile(
-                  icon: Icons.fact_check_rounded,
-                  title: (_exams[i]['name'] ?? _exams[i]['title'] ?? 'Exam').toString(),
-                  subtitle: null,
-                  onTap: () => _pickExam(_exams[i]),
                 ),
               );
       case _Step.sheet:
@@ -254,7 +252,6 @@ class _MarksScreenState extends State<MarksScreen> {
                   student: students[i],
                   fields: fields,
                   controllers: _controllers[students[i]['student_id']]!,
-                  commentController: _commentControllers[students[i]['student_id']]!,
                   readOnly: locked,
                   onChanged: () => _onFieldChanged(students[i]['student_id'] as int),
                 ),
@@ -270,7 +267,6 @@ class _StudentScoreCard extends StatelessWidget {
   final Map<String, dynamic> student;
   final List<Map<String, dynamic>> fields;
   final Map<String, TextEditingController> controllers;
-  final TextEditingController commentController;
   final bool readOnly;
   final VoidCallback onChanged;
 
@@ -278,7 +274,6 @@ class _StudentScoreCard extends StatelessWidget {
     required this.student,
     required this.fields,
     required this.controllers,
-    required this.commentController,
     required this.readOnly,
     required this.onChanged,
   });
@@ -311,13 +306,6 @@ class _StudentScoreCard extends StatelessWidget {
                   ),
                 ),
             ],
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: commentController,
-            enabled: !readOnly,
-            decoration: const InputDecoration(labelText: 'Comment (optional)', isDense: true, border: OutlineInputBorder()),
-            onChanged: (_) => onChanged(),
           ),
         ],
       ),
