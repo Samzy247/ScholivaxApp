@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 import '../../models/user_session.dart';
 import '../../services/attendance_service.dart';
 import '../../theme/app_theme.dart';
+import '../webview_screen.dart';
 
 class AttendanceScreen extends StatefulWidget {
   final UserSession session;
@@ -81,28 +80,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (idx != -1) _roster[idx] = {..._roster[idx], 'status': status};
     });
     final synced = await AttendanceService.setStatus(widget.session, classId, studentId, _today, status);
-    if (!synced) _refreshPendingCount();
+    if (!mounted) return;
+    if (!synced) {
+      _refreshPendingCount();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Couldn't reach the server — queued, will save once you're back online."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Saved'), duration: Duration(seconds: 1), backgroundColor: Colors.green),
+      );
+    }
   }
 
-  Future<void> _onScanned(String code) async {
-    final classId = _selectedClass!['class_id'] as int;
-    final name = await AttendanceService.markScannedPresent(widget.session, classId, _today, code, _roster);
-    if (!mounted) return;
-    if (name == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No student found for "$code" in this class.'), backgroundColor: Colors.orange),
-      );
-      return;
-    }
-    setState(() {
-      final idx = _roster.indexWhere((r) => r['roll'].toString().toLowerCase() == code.toLowerCase());
-      if (idx != -1) _roster[idx] = {..._roster[idx], 'status': AttendanceStatus.present};
-    });
-    _refreshPendingCount();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$name marked Present'), backgroundColor: Colors.green, duration: const Duration(seconds: 1)),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -127,7 +120,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 preferredSize: const Size.fromHeight(48),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                  child: _ModeToggle(scanMode: _scanMode, onChanged: (v) => setState(() => _scanMode = v)),
+                  child: _ModeToggle(scanMode: _scanMode, onChanged: _onModeChanged),
                 ),
               ),
       ),
@@ -135,9 +128,25 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ? const Center(child: CircularProgressIndicator(color: AppColors.navy))
           : _selectedClass == null
               ? _ClassPicker(classes: _classes, onSelect: _selectClass)
-              : _scanMode
-                  ? _ScanView(onScanned: _onScanned)
-                  : _RosterList(roster: _roster, onSetStatus: _setStatus),
+              : _RosterList(roster: _roster, onSetStatus: _setStatus),
+    );
+  }
+
+  // The in-app camera scanner turned out unreliable on real devices (a
+  // "Couldn't start the camera" error that didn't trace back to anything
+  // fixable in the manifest/permissions). The website's own barcode-scan
+  // page already works fine — same dual-scan logic, browser camera access
+  // — so "Scan" just opens that instead of trying to reproduce it natively.
+  void _onModeChanged(bool wantsScan) {
+    if (!wantsScan) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WebViewScreen(
+          title: 'Scan Attendance',
+          path: '/teacher/attendance_scan',
+          session: widget.session,
+        ),
+      ),
     );
   }
 }
@@ -216,165 +225,6 @@ class _ClassPicker extends StatelessWidget {
       },
     );
   }
-}
-
-class _ScanView extends StatefulWidget {
-  final ValueChanged<String> onScanned;
-  const _ScanView({required this.onScanned});
-
-  @override
-  State<_ScanView> createState() => _ScanViewState();
-}
-
-class _ScanViewState extends State<_ScanView> {
-  final MobileScannerController _controller = MobileScannerController();
-  String? _lastCode;
-  DateTime? _lastScanTime;
-
-  // null = still checking, true = granted, false = denied
-  bool? _hasPermission;
-  bool _permanentlyDenied = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkPermission();
-  }
-
-  Future<void> _checkPermission() async {
-    final status = await Permission.camera.request();
-    if (!mounted) return;
-    setState(() {
-      _hasPermission = status.isGranted;
-      _permanentlyDenied = status.isPermanentlyDenied;
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleDetect(BarcodeCapture capture) {
-    final barcode = capture.barcodes.firstOrNull;
-    final code = barcode?.rawValue;
-    if (code == null || code.isEmpty) return;
-
-    final now = DateTime.now();
-    // Debounce: ignore the same code scanned again within 3 seconds so one
-    // student in front of the camera doesn't get marked repeatedly.
-    if (code == _lastCode && _lastScanTime != null && now.difference(_lastScanTime!) < const Duration(seconds: 3)) {
-      return;
-    }
-    _lastCode = code;
-    _lastScanTime = now;
-    widget.onScanned(code);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_hasPermission == null) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
-    }
-
-    if (_hasPermission == false) {
-      return _PermissionMessage(
-        permanentlyDenied: _permanentlyDenied,
-        onRetry: _checkPermission,
-      );
-    }
-
-    return Stack(
-      children: [
-        MobileScanner(
-          controller: _controller,
-          onDetect: _handleDetect,
-          errorBuilder: (context, error, child) => _CameraErrorMessage(error: error),
-        ),
-        Positioned(
-          left: 24,
-          right: 24,
-          bottom: 32,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
-            child: const Text(
-              'Point the camera at a student ID barcode to mark them Present.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 13),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _PermissionMessage extends StatelessWidget {
-  final bool permanentlyDenied;
-  final VoidCallback onRetry;
-  const _PermissionMessage({required this.permanentlyDenied, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black,
-      padding: const EdgeInsets.all(24),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.camera_alt_outlined, color: Colors.white70, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              permanentlyDenied
-                  ? 'Camera permission is turned off for Scholivax. Open Settings to allow it, then come back here.'
-                  : 'Scholivax needs camera access to scan student ID barcodes.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 14.5),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: permanentlyDenied ? openAppSettings : onRetry,
-              child: Text(permanentlyDenied ? 'Open Settings' : 'Grant Camera Access'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CameraErrorMessage extends StatelessWidget {
-  final MobileScannerException error;
-  const _CameraErrorMessage({required this.error});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black,
-      padding: const EdgeInsets.all(24),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline_rounded, color: Colors.white70, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              'Couldn\'t start the camera (${error.errorCode.name}). Try Manual instead, or restart the app.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white, fontSize: 14.5),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-extension _FirstOrNull<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }
 
 class _RosterList extends StatelessWidget {

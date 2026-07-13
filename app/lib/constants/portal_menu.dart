@@ -96,6 +96,7 @@ class PortalMenu {
 
   static const _teacher = <PortalSection>[
     PortalSection(title: 'Classes', items: [
+      PortalItem(label: 'Attendance', icon: Icons.qr_code_scanner_rounded, path: '/teacher/manage_attendance', nativeRoute: 'attendance'),
       PortalItem(label: 'Live Class', icon: Icons.videocam_rounded, path: '/teacher/live_class'),
       PortalItem(label: 'Video Lessons', icon: Icons.ondemand_video_rounded, path: '/teacher/video_class'),
       PortalItem(label: 'Assignment', icon: Icons.assignment_rounded, path: '/assignment/assignment'),

@@ -17,6 +17,7 @@ import '../widgets/portal_grid.dart';
 import 'chat_screen.dart';
 import 'school_select_screen.dart';
 import 'offline/marks_screen.dart';
+import 'offline/attendance_screen.dart';
 import 'teacher_chat_inbox_screen.dart';
 import 'webview_screen.dart';
 
@@ -97,6 +98,12 @@ class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
   }
 
   void _openItem(PortalItem item) {
+    if (item.nativeRoute == 'attendance') {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => AttendanceScreen(session: widget.session)),
+      );
+      return;
+    }
     if (item.nativeRoute == 'marks') {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => MarksScreen(session: widget.session)),
@@ -306,13 +313,6 @@ class _DashboardScreenState extends State<DashboardScreen> with RouteAware {
               ],
             ),
           ),
-          if (session.userType == 'teacher')
-            Container(
-              width: double.infinity,
-              color: Colors.white,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-              child: OfflineQuickActions(session: session),
-            ),
           Expanded(
             child: NativeDashboard(key: _dashboardKey, session: session),
           ),
