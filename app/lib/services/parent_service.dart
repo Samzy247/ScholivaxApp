@@ -1,5 +1,6 @@
 import 'dart:io' as io;
 import '../models/user_session.dart';
+import 'api_client.dart';
 import 'web_cookie_bridge.dart';
 
 /// Both calls here hit the ACTUAL website directly (not the token API),
@@ -50,5 +51,13 @@ class ParentService {
     } finally {
       client.close();
     }
+  }
+
+  /// Today's marked-or-not status for every linked child, for the "Track
+  /// Attendance" section on the parent dashboard — this is the token API
+  /// (Attendance::child_status()), not a website call like the two above.
+  static Future<List<Map<String, dynamic>>> fetchTodayAttendance(UserSession session) async {
+    final response = await ApiClient.get(session.baseUrl, '/api/attendance/child_status', token: session.token);
+    return (response['children'] as List).cast<Map<String, dynamic>>();
   }
 }

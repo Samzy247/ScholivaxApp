@@ -22,6 +22,15 @@ class StudentDashboardBody extends StatelessWidget {
     final payColor = payPct >= 100 ? const Color(0xFF16A34A) : (payPct >= 50 ? const Color(0xFFD97706) : const Color(0xFFDC2626));
     final balance = (fees['balance'] as num?)?.toDouble() ?? 0;
 
+    // What the admin has toggled under "Student Dashboard Settings" on the
+    // website — defaults to all-visible if the field's missing entirely
+    // (an older backend that hasn't picked up this change yet), matching
+    // the website's own "unconfigured = on" default.
+    final widgets = (data['widgets'] as Map?)?.cast<String, dynamic>() ?? const {};
+    bool widgetOn(String key) => widgets[key] != false;
+    final showScoreCards = widgetOn('score_cards');
+    final showSubjectScores = widgetOn('score_breakdown') || widgetOn('score_vs_class');
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
@@ -56,20 +65,24 @@ class StudentDashboardBody extends StatelessWidget {
         ),
         const SizedBox(height: 16),
 
-        StatGrid(cards: [
-          StatCard(icon: Icons.emoji_events_rounded, value: '${data['average']}', label: 'Score Average', color: const Color(0xFF16A34A)),
-          StatCard(icon: Icons.grade_rounded, value: '${data['grade']}', label: 'Current Grade', color: const Color(0xFF15803D)),
-        ]),
-        const SizedBox(height: 20),
+        if (showScoreCards) ...[
+          StatGrid(cards: [
+            StatCard(icon: Icons.emoji_events_rounded, value: '${data['average']}', label: 'Score Average', color: const Color(0xFF16A34A)),
+            StatCard(icon: Icons.grade_rounded, value: '${data['grade']}', label: 'Current Grade', color: const Color(0xFF15803D)),
+          ]),
+          const SizedBox(height: 20),
+        ],
 
-        SectionCard(
-          title: 'Subject Scores — Term ${data['term']}',
-          accent: accent,
-          child: subjects.isEmpty
-              ? const Text('No scores entered yet for this term.', style: TextStyle(color: Colors.grey))
-              : Column(children: [for (final s in subjects) _subjectRow(s)]),
-        ),
-        const SizedBox(height: 16),
+        if (showSubjectScores) ...[
+          SectionCard(
+            title: 'Subject Scores — Term ${data['term']}',
+            accent: accent,
+            child: subjects.isEmpty
+                ? const Text('No scores entered yet for this term.', style: TextStyle(color: Colors.grey))
+                : Column(children: [for (final s in subjects) _subjectRow(s)]),
+          ),
+          const SizedBox(height: 16),
+        ],
 
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/user_session.dart';
 import '../../screens/child_dashboard_screen.dart';
+import '../../services/parent_service.dart';
 import '../../theme/app_theme.dart';
 import 'dashboard_widgets.dart';
 
@@ -41,6 +42,11 @@ class ParentDashboardBody extends StatelessWidget {
           StatCard(icon: Icons.family_restroom_rounded, value: '${children.length}', label: 'Children Enrolled', color: accent),
         ]),
         const SizedBox(height: 20),
+        // Daily attendance lives here now, not in the notification bell —
+        // pushes still arrive the moment a child is marked, but this is
+        // the place to actually check status at a glance.
+        _AttendanceTrackerSection(session: session),
+        const SizedBox(height: 20),
         SectionCard(
           title: 'My Children',
           accent: accent,
@@ -61,6 +67,98 @@ class ParentDashboardBody extends StatelessWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+/// "Track Attendance" — today's marked-or-not status for every linked
+/// child, fetched independently of the rest of the dashboard summary so
+/// pulling to refresh the dashboard also refreshes this.
+class _AttendanceTrackerSection extends StatefulWidget {
+  final UserSession session;
+  const _AttendanceTrackerSection({required this.session});
+
+  @override
+  State<_AttendanceTrackerSection> createState() => _AttendanceTrackerSectionState();
+}
+
+class _AttendanceTrackerSectionState extends State<_AttendanceTrackerSection> {
+  late Future<List<Map<String, dynamic>>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ParentService.fetchTodayAttendance(widget.session);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = AppColors.headerGradient('parent').first;
+    return SectionCard(
+      title: "Today's Attendance",
+      accent: accent,
+      child: FutureBuilder<List<Map<String, dynamic>>>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+            );
+          }
+          if (snapshot.hasError) {
+            return const Text("Couldn't load today's attendance.", style: TextStyle(color: Colors.grey));
+          }
+          final children = snapshot.data ?? [];
+          if (children.isEmpty) {
+            return const Text('No children linked to this account yet.', style: TextStyle(color: Colors.grey));
+          }
+          return Column(children: [for (final c in children) _AttendanceRow(child: c)]);
+        },
+      ),
+    );
+  }
+}
+
+class _AttendanceRow extends StatelessWidget {
+  final Map<String, dynamic> child;
+  const _AttendanceRow({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final marked = child['marked'] == true;
+    final status = child['status'] as int?;
+
+    late final String label;
+    late final Color color;
+    if (!marked) {
+      label = 'Not marked yet';
+      color = const Color(0xFF94A3B8);
+    } else if (status == 2) {
+      label = 'Present';
+      color = const Color(0xFF16A34A);
+    } else if (status == 1) {
+      label = 'Half Day';
+      color = const Color(0xFFD97706);
+    } else {
+      label = 'Absent';
+      color = const Color(0xFFDC2626);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(children: [
+        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text('${child['name']}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+        ),
+      ]),
     );
   }
 }
