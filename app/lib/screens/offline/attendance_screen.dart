@@ -204,7 +204,7 @@ class _ModeToggle extends StatelessWidget {
 /// the manifest alone isn't enough on Android 6+, the app has to actually
 /// ask.
 class _ScanView extends StatefulWidget {
-  final ValueChanged<String> onScanned;
+  final Future<void> Function(String) onScanned;
   const _ScanView({required this.onScanned});
 
   @override
