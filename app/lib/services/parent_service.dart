@@ -60,4 +60,19 @@ class ParentService {
     final response = await ApiClient.get(session.baseUrl, '/api/attendance/child_status', token: session.token);
     return (response['children'] as List).cast<Map<String, dynamic>>();
   }
+
+  /// Day-by-day attendance history for one child. [range] is '7', '30', or
+  /// 'all'. Powers the Attendance History screen's date filters.
+  static Future<Map<String, dynamic>> fetchAttendanceHistory(UserSession session, int studentId, String range) async {
+    final response = await ApiClient.get(
+      session.baseUrl,
+      '/api/attendance/history',
+      query: {'student_id': studentId.toString(), 'range': range},
+      token: session.token,
+    );
+    return {
+      'records': (response['records'] as List).cast<Map<String, dynamic>>(),
+      'summary': (response['summary'] as Map).cast<String, dynamic>(),
+    };
+  }
 }

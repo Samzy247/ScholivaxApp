@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/user_session.dart';
+import '../../screens/attendance_history_screen.dart';
 import '../../screens/child_dashboard_screen.dart';
 import '../../services/parent_service.dart';
 import '../../theme/app_theme.dart';
@@ -113,7 +114,7 @@ class _AttendanceTrackerSectionState extends State<_AttendanceTrackerSection> {
           if (children.isEmpty) {
             return const Text('No children linked to this account yet.', style: TextStyle(color: Colors.grey));
           }
-          return Column(children: [for (final c in children) _AttendanceRow(child: c)]);
+          return Column(children: [for (final c in children) _AttendanceRow(child: c, session: widget.session)]);
         },
       ),
     );
@@ -122,7 +123,8 @@ class _AttendanceTrackerSectionState extends State<_AttendanceTrackerSection> {
 
 class _AttendanceRow extends StatelessWidget {
   final Map<String, dynamic> child;
-  const _AttendanceRow({required this.child});
+  final UserSession session;
+  const _AttendanceRow({required this.child, required this.session});
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +147,18 @@ class _AttendanceRow extends StatelessWidget {
       color = const Color(0xFFDC2626);
     }
 
-    return Padding(
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AttendanceHistoryScreen(
+            session: session,
+            studentId: child['student_id'] as int,
+            studentName: '${child['name']}',
+          ),
+        ),
+      ),
+      child: Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(children: [
         Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
@@ -159,6 +172,7 @@ class _AttendanceRow extends StatelessWidget {
           child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
         ),
       ]),
+      ),
     );
   }
 }
